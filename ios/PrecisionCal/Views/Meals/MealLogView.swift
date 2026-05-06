@@ -4,6 +4,7 @@ import PhotosUI
 
 struct MealLogView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \Meal.createdAt, order: .reverse) private var meals: [Meal]
 
     @State private var showCapture = false
@@ -55,6 +56,14 @@ struct MealLogView: View {
                 .padding(.top, 12)
             }
             .scrollIndicators(.hidden)
+        }
+        .navigationTitle("Meals")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { dismiss() }
+                    .foregroundStyle(PrecisionCalTheme.textSecondary)
+            }
         }
         .photosPicker(isPresented: $showCapture, selection: $pickerItem, matching: .images, photoLibrary: .shared())
         .sheet(isPresented: $showManualEntry) {

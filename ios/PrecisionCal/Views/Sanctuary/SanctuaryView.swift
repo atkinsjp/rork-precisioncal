@@ -3,6 +3,7 @@ import SwiftData
 
 struct SanctuaryView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
     @Query(sort: \SanctuaryPost.createdAt, order: .reverse) private var allPosts: [SanctuaryPost]
     @Query(sort: \RoadmapInsight.createdAt, order: .reverse) private var insights: [RoadmapInsight]
 
@@ -59,6 +60,10 @@ struct SanctuaryView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                        .foregroundStyle(PrecisionCalTheme.textSecondary)
+                }
                 ToolbarItem(placement: .principal) {
                     Text("THE SANCTUARY")
                         .font(.system(size: 11, weight: .bold))
