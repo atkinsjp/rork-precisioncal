@@ -250,7 +250,7 @@ struct SanctuaryPostCard: View {
             }
 
             HStack(spacing: 0) {
-                macroChip("kcal", "\(Int(post.calories))", PrecisionCalTheme.terracotta)
+                macroChip("cal", "\(Int(post.calories))", PrecisionCalTheme.terracotta)
                 macroChip("P", "\(Int(post.protein))g", PrecisionCalTheme.proteinColor)
                 macroChip("C", "\(Int(post.carbs))g", PrecisionCalTheme.carbColor)
                 macroChip("F", "\(Int(post.fat))g", PrecisionCalTheme.fatColor)

@@ -106,7 +106,7 @@ struct ProfileView: View {
                     .tracking(2.5)
                     .foregroundStyle(PrecisionCalTheme.textTertiary)
 
-                TargetRow(icon: "flame.fill", color: PrecisionCalTheme.proteinColor, label: "Calories", value: "\(p.dailyCalorieTarget) kcal")
+                TargetRow(icon: "flame.fill", color: PrecisionCalTheme.proteinColor, label: "Calories", value: "\(p.dailyCalorieTarget) cal")
                 TargetRow(icon: "bolt.fill", color: PrecisionCalTheme.proteinColor, label: "Protein", value: "\(p.dailyProteinTarget) g")
                 TargetRow(icon: "leaf.fill", color: PrecisionCalTheme.carbColor, label: "Carbs", value: "\(p.dailyCarbTarget) g")
                 TargetRow(icon: "drop.halffull", color: PrecisionCalTheme.fatColor, label: "Fat", value: "\(p.dailyFatTarget) g")

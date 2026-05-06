@@ -253,7 +253,7 @@ struct SanctuaryComposerView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(meal.title).font(.system(size: 14, weight: .semibold))
                                         .foregroundStyle(PrecisionCalTheme.textPrimary)
-                                    Text("Score \(meal.mealScore) · \(Int(meal.totalCalories)) kcal")
+                                    Text("Score \(meal.mealScore) · \(Int(meal.totalCalories)) cal")
                                         .font(.system(size: 11))
                                         .foregroundStyle(PrecisionCalTheme.textTertiary)
                                 }

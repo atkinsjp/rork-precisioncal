@@ -227,7 +227,7 @@ private struct ProductLibraryRow: View {
                         }
                         Text("•")
                             .foregroundStyle(PrecisionCalTheme.textTertiary)
-                        Text("\(Int(product.calories)) kcal")
+                        Text("\(Int(product.calories)) cal")
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(PrecisionCalTheme.textTertiary)
                         if product.scanCount > 1 {

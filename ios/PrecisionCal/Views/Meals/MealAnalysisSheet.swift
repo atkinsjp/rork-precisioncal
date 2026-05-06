@@ -182,7 +182,7 @@ struct MealAnalysisSheet: View {
     private var nutritionSummary: some View {
         GlassCard {
             HStack(spacing: 0) {
-                NutritionStat(value: "\(Int(meal.totalCalories))", unit: "kcal", color: .white)
+                NutritionStat(value: "\(Int(meal.totalCalories))", unit: "calories", color: PrecisionCalTheme.textPrimary)
                 Divider().frame(height: 36).background(PrecisionCalTheme.glassStroke)
                 NutritionStat(value: "\(Int(meal.totalFiber))g", unit: "fiber", color: PrecisionCalTheme.mint)
                 Divider().frame(height: 36).background(PrecisionCalTheme.glassStroke)
@@ -223,7 +223,7 @@ struct MealAnalysisSheet: View {
                                 .foregroundStyle(PrecisionCalTheme.textTertiary)
                         }
                         Spacer()
-                        Text("\(Int(item.calories)) kcal")
+                        Text("\(Int(item.calories)) calories")
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
                             .foregroundStyle(PrecisionCalTheme.terracotta)
                     }

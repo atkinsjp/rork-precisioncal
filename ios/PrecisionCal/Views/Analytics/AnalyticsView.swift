@@ -175,7 +175,7 @@ enum Nutrient: String, CaseIterable, Identifiable {
 
     var unit: String {
         switch self {
-        case .calories: "kcal"
+        case .calories: "calories"
         default: "g"
         }
     }

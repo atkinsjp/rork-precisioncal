@@ -240,7 +240,7 @@ struct DashboardView: View {
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                         .foregroundStyle(PrecisionCalTheme.textPrimary)
                         .contentTransition(.numericText(value: caloriesToday))
-                    Text("of \(profile?.dailyCalorieTarget ?? 2000) kcal")
+                    Text("of \(profile?.dailyCalorieTarget ?? 2000) calories")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(PrecisionCalTheme.textSecondary)
                 }
@@ -484,7 +484,7 @@ struct MealRow: View {
                     Text("\(Int(meal.totalCalories))")
                         .font(.system(size: 17, weight: .bold, design: .rounded))
                         .foregroundStyle(PrecisionCalTheme.textPrimary)
-                    Text("kcal")
+                    Text("calories")
                         .font(.system(size: 11))
                         .foregroundStyle(PrecisionCalTheme.textTertiary)
                 }

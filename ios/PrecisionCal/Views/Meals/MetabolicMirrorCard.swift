@@ -37,7 +37,7 @@ struct MetabolicMirrorCard: View {
 
         var sentences: [String] = []
         sentences.append(
-            "This meal lands at roughly \(kcal) kcal — \(proteinG) g of protein for repair, \(carbG) g of carbohydrate for fuel, and \(fatG) g of fat to slow absorption."
+            "This meal lands at roughly \(kcal) calories — \(proteinG) g of protein for repair, \(carbG) g of carbohydrate for fuel, and \(fatG) g of fat to slow absorption."
         )
         if meal.totalProtein >= 25 {
             sentences.append("Protein is generous enough to anchor recovery and keep satiety high.")

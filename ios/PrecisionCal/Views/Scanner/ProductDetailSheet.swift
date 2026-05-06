@@ -179,7 +179,7 @@ struct ProductDetailSheet: View {
                     .tracking(2)
                     .foregroundStyle(PrecisionCalTheme.textTertiary)
                 HStack(spacing: 0) {
-                    NutritionStat(value: "\(Int(product.calories))", unit: "kcal", color: PrecisionCalTheme.textPrimary)
+                    NutritionStat(value: "\(Int(product.calories))", unit: "calories", color: PrecisionCalTheme.textPrimary)
                     Divider().frame(height: 36).background(PrecisionCalTheme.glassStroke)
                     NutritionStat(value: "\(Int(product.protein))g", unit: "protein", color: PrecisionCalTheme.proteinColor)
                     Divider().frame(height: 36).background(PrecisionCalTheme.glassStroke)
