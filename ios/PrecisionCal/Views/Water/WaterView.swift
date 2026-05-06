@@ -16,6 +16,7 @@ struct WaterView: View {
 
     @State private var t: Double = 0
     @State private var lastTapId: UUID?
+    @State private var showManualLog = false
 
     var body: some View {
         ScrollView {
@@ -38,6 +39,8 @@ struct WaterView: View {
 
                 bubblesRow
 
+                manualLogButton
+
                 if !todayEntries.isEmpty {
                     todayLog
                 }
@@ -48,6 +51,16 @@ struct WaterView: View {
             .padding(.top, 12)
         }
         .scrollIndicators(.hidden)
+        .sheet(isPresented: $showManualLog) {
+            ManualWaterLogSheet { ml, date in
+                let entry = WaterEntry(createdAt: date, amountMl: ml)
+                modelContext.insert(entry)
+                try? modelContext.save()
+                let gen = UIImpactFeedbackGenerator(style: .medium)
+                gen.impactOccurred()
+            }
+            .presentationDetents([.medium, .large])
+        }
         .onAppear {
             withAnimation(.linear(duration: 4).repeatForever(autoreverses: false)) {
                 t = .pi * 2
@@ -76,6 +89,29 @@ struct WaterView: View {
             WaterBubbleButton(label: "12 oz", subtitle: "355 ml", ml: 355) { add($0) }
             WaterBubbleButton(label: "16 oz", subtitle: "473 ml", ml: 473) { add($0) }
         }
+    }
+
+    private var manualLogButton: some View {
+        Button {
+            showManualLog = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("Log manually")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundStyle(PrecisionCalTheme.hydrationColor)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(PrecisionCalTheme.glassStroke, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var todayLog: some View {
@@ -173,5 +209,96 @@ struct WaterBubbleButton: View {
             .scaleEffect(pressed ? 1.08 : 1)
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct ManualWaterLogSheet: View {
+    let onSave: (Double, Date) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var unit: WaterUnit = .oz
+    @State private var amountText: String = "8"
+    @State private var date: Date = Date()
+
+    enum WaterUnit: String, CaseIterable, Identifiable {
+        case oz = "oz"
+        case ml = "ml"
+        var id: String { rawValue }
+    }
+
+    private var amountMl: Double {
+        let raw = Double(amountText.replacingOccurrences(of: ",", with: ".")) ?? 0
+        switch unit {
+        case .oz: return raw * 29.5735
+        case .ml: return raw
+        }
+    }
+
+    private var canSave: Bool { amountMl > 0 }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Amount") {
+                    HStack {
+                        TextField("Amount", text: $amountText)
+                            .keyboardType(.decimalPad)
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                        Picker("Unit", selection: $unit) {
+                            ForEach(WaterUnit.allCases) { u in
+                                Text(u.rawValue).tag(u)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 110)
+                    }
+                    if amountMl > 0 {
+                        Text("\(Int(amountMl)) ml")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("When") {
+                    DatePicker("Date & time", selection: $date, in: ...Date(), displayedComponents: [.date, .hourAndMinute])
+                }
+
+                Section {
+                    HStack(spacing: 10) {
+                        ForEach([("8 oz", 8.0), ("12 oz", 12.0), ("16 oz", 16.0), ("20 oz", 20.0)], id: \.0) { item in
+                            Button {
+                                unit = .oz
+                                amountText = item.1.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(item.1))" : "\(item.1)"
+                            } label: {
+                                Text(item.0)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(PrecisionCalTheme.hydrationColor.opacity(0.15), in: .rect(cornerRadius: 10))
+                                    .foregroundStyle(PrecisionCalTheme.hydrationColor)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                } header: {
+                    Text("Quick fill")
+                }
+            }
+            .navigationTitle("Log Water")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(amountMl, date)
+                        dismiss()
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
     }
 }
