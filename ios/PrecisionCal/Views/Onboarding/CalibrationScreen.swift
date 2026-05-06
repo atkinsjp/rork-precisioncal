@@ -7,7 +7,7 @@ struct CalibrationScreen: View {
     let onContinue: () -> Void
 
     private let goals = ["Lose", "Maintain", "Gain"]
-    @State private var weightUnit: WeightUnit = .kg
+    @State private var weightUnit: WeightUnit = .lb
 
     enum WeightUnit: String, CaseIterable, Identifiable {
         case kg, lb

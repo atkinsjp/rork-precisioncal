@@ -105,7 +105,7 @@ struct OnboardingFlow: View {
         let meds = medications.isEmpty ? "none" : medications.joined(separator: ", ")
         return """
         Age: \(ageYears)
-        Weight: \(Int(weightKg)) kg
+        Weight: \(Int(weightKg * 2.20462)) lb
         Primary goal: \(goal)
         Daily water target: \(dailyWaterTargetMl) ml
         Personal goals: \(goalsLine)

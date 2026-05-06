@@ -87,7 +87,7 @@ struct ProfileView: View {
                         Text(p.goal)
                             .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(PrecisionCalTheme.textPrimary)
-                        Text("\(p.ageYears) yrs • \(Int(p.weightKg)) kg")
+                        Text("\(p.ageYears) yrs • \(Int(p.weightKg * 2.20462)) lb")
                             .font(.system(size: 13))
                             .foregroundStyle(PrecisionCalTheme.textSecondary)
                     }

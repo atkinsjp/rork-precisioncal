@@ -615,17 +615,19 @@ struct WeightAnalyticsSection: View {
         return entries.filter { $0.createdAt >= start }.sorted { $0.createdAt < $1.createdAt }
     }
 
+    private static let kgToLb: Double = 2.20462
+
     private var points: [DailyPoint] {
-        filtered.map { DailyPoint(date: $0.createdAt, value: $0.weightKg, nutrient: "Weight") }
+        filtered.map { DailyPoint(date: $0.createdAt, value: $0.weightKg * Self.kgToLb, nutrient: "Weight") }
     }
 
-    private var current: Double? { entries.first?.weightKg }
+    private var current: Double? { entries.first.map { $0.weightKg * Self.kgToLb } }
     private var change: Double {
         guard let first = filtered.first, let last = filtered.last else { return 0 }
-        return last.weightKg - first.weightKg
+        return (last.weightKg - first.weightKg) * Self.kgToLb
     }
-    private var minW: Double { filtered.map { $0.weightKg }.min() ?? 0 }
-    private var maxW: Double { filtered.map { $0.weightKg }.max() ?? 0 }
+    private var minW: Double { (filtered.map { $0.weightKg }.min() ?? 0) * Self.kgToLb }
+    private var maxW: Double { (filtered.map { $0.weightKg }.max() ?? 0) * Self.kgToLb }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -665,7 +667,7 @@ struct WeightAnalyticsSection: View {
                             Text(String(format: "%.1f", cur))
                                 .font(.system(size: 22, weight: .bold, design: .rounded))
                                 .foregroundStyle(PrecisionCalTheme.textPrimary)
-                            Text("kg")
+                            Text("lb")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(PrecisionCalTheme.textTertiary)
                         }
@@ -749,9 +751,9 @@ struct WeightAnalyticsSection: View {
 
     private var statsRow: some View {
         HStack(spacing: 12) {
-            tile("Change", value: String(format: "%+.1f", change), unit: "kg", color: change <= 0 ? PrecisionCalTheme.sage : PrecisionCalTheme.terracotta, delay: 0.2)
-            tile("Lowest", value: filtered.isEmpty ? "—" : String(format: "%.1f", minW), unit: "kg", color: PrecisionCalTheme.sage, delay: 0.3)
-            tile("Highest", value: filtered.isEmpty ? "—" : String(format: "%.1f", maxW), unit: "kg", color: PrecisionCalTheme.fatColor, delay: 0.4)
+            tile("Change", value: String(format: "%+.1f", change), unit: "lb", color: change <= 0 ? PrecisionCalTheme.sage : PrecisionCalTheme.terracotta, delay: 0.2)
+            tile("Lowest", value: filtered.isEmpty ? "—" : String(format: "%.1f", minW), unit: "lb", color: PrecisionCalTheme.sage, delay: 0.3)
+            tile("Highest", value: filtered.isEmpty ? "—" : String(format: "%.1f", maxW), unit: "lb", color: PrecisionCalTheme.fatColor, delay: 0.4)
         }
     }
 
@@ -806,7 +808,7 @@ struct WeightAnalyticsSection: View {
                         Image(systemName: "scalemass.fill")
                             .foregroundStyle(PrecisionCalTheme.terracotta)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(String(format: "%.1f kg", e.weightKg))
+                            Text(String(format: "%.1f lb", e.weightKg * 2.20462))
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(PrecisionCalTheme.textPrimary)
                             if !e.note.isEmpty {
@@ -836,12 +838,12 @@ struct AddWeightSheet: View {
     let initial: Double
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @State private var weight: Double = 70
+    @State private var weight: Double = 154
     @State private var note: String = ""
 
     init(initial: Double) {
         self.initial = initial
-        _weight = State(initialValue: initial)
+        _weight = State(initialValue: initial * 2.20462)
     }
 
     var body: some View {
@@ -855,7 +857,7 @@ struct AddWeightSheet: View {
                                 .font(.system(size: 64, weight: .bold, design: .rounded))
                                 .foregroundStyle(PrecisionCalTheme.terracotta)
                                 .contentTransition(.numericText(value: weight))
-                            Text("kg")
+                            Text("lb")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(PrecisionCalTheme.textTertiary)
                         }
@@ -863,11 +865,11 @@ struct AddWeightSheet: View {
 
                         GlassCard {
                             VStack(spacing: 14) {
-                                Slider(value: $weight, in: 30...200, step: 0.1)
+                                Slider(value: $weight, in: 66...440, step: 0.1)
                                     .tint(PrecisionCalTheme.terracotta)
 
                                 HStack {
-                                    Button { weight = max(30, weight - 0.1) } label: {
+                                    Button { weight = max(66, weight - 0.1) } label: {
                                         Image(systemName: "minus.circle.fill")
                                             .font(.system(size: 28))
                                             .foregroundStyle(PrecisionCalTheme.textSecondary)
@@ -878,7 +880,7 @@ struct AddWeightSheet: View {
                                         .tracking(2)
                                         .foregroundStyle(PrecisionCalTheme.textTertiary)
                                     Spacer()
-                                    Button { weight = min(200, weight + 0.1) } label: {
+                                    Button { weight = min(440, weight + 0.1) } label: {
                                         Image(systemName: "plus.circle.fill")
                                             .font(.system(size: 28))
                                             .foregroundStyle(PrecisionCalTheme.terracotta)
@@ -916,7 +918,7 @@ struct AddWeightSheet: View {
     }
 
     private func save() {
-        let entry = BodyWeightEntry(weightKg: weight, note: note)
+        let entry = BodyWeightEntry(weightKg: weight / 2.20462, note: note)
         modelContext.insert(entry)
         try? modelContext.save()
         let gen = UINotificationFeedbackGenerator()
