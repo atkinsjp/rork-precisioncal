@@ -7,6 +7,7 @@ struct MealLogView: View {
     @Query(sort: \Meal.createdAt, order: .reverse) private var meals: [Meal]
 
     @State private var showCapture = false
+    @State private var showManualEntry = false
     @State private var pickerItem: PhotosPickerItem?
     @State private var pickedImage: UIImage?
     @State private var isAnalyzing = false
@@ -56,6 +57,10 @@ struct MealLogView: View {
             .scrollIndicators(.hidden)
         }
         .photosPicker(isPresented: $showCapture, selection: $pickerItem, matching: .images, photoLibrary: .shared())
+        .sheet(isPresented: $showManualEntry) {
+            ManualMealEntryView()
+                .presentationDetents([.large])
+        }
         .onChange(of: pickerItem) { _, newItem in
             guard let newItem else { return }
             Task { await loadAndAnalyze(item: newItem) }
@@ -121,6 +126,25 @@ struct MealLogView: View {
                     .foregroundStyle(PrecisionCalTheme.textPrimary)
                 }
                 .padding(.horizontal, 8)
+
+                Button {
+                    showManualEntry = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Log manually")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(PrecisionCalTheme.terracottaDeep)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 18)
+                    .background(
+                        Capsule(style: .continuous)
+                            .stroke(PrecisionCalTheme.terracotta.opacity(0.4), lineWidth: 1)
+                    )
+                }
+                .padding(.top, 2)
             }
             .padding(.vertical, 24)
             .padding(.horizontal, 20)
