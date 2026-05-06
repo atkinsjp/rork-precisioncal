@@ -148,7 +148,7 @@ struct ProfileView: View {
                 HStack(spacing: 10) {
                     if calibrating {
                         ProgressView()
-                            .tint(.white)
+                            .tint(PrecisionCalTheme.textPrimary)
                             .scaleEffect(0.8)
                     } else {
                         Image(systemName: "arrow.triangle.2.circlepath")
@@ -158,17 +158,20 @@ struct ProfileView: View {
                         .font(.system(size: 13, weight: .bold))
                         .tracking(1.1)
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(PrecisionCalTheme.textPrimary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 13)
                 .background {
                     Capsule().fill(
                         LinearGradient(
-                            colors: [PrecisionCalTheme.terracotta, PrecisionCalTheme.terracottaDeep],
+                            colors: [PrecisionCalTheme.terracotta.opacity(0.28), PrecisionCalTheme.terracottaDeep.opacity(0.32)],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         )
                     )
-                    .shadow(color: PrecisionCalTheme.terracotta.opacity(0.3), radius: 8, x: 0, y: 4)
+                    .overlay {
+                        Capsule().stroke(PrecisionCalTheme.terracotta.opacity(0.55), lineWidth: 1)
+                    }
+                    .shadow(color: PrecisionCalTheme.terracotta.opacity(0.18), radius: 8, x: 0, y: 4)
                 }
             }
             .buttonStyle(.plain)
