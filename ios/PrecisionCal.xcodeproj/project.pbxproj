@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		XX298127CFBB2CF3FA631BXX /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = XXDCC169DE7B2F3C1C8B10XX /* RevenueCat */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		105FC58A2E9EAD3200EA8BCF /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,29 +33,12 @@
 		105FC5932E9EAD3200EA8BCF /* PrecisionCalUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrecisionCalUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		105FC57C2E9EAD3100EA8BCF /* PrecisionCal */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = PrecisionCal;
-			sourceTree = "<group>";
-		};
-		105FC58C2E9EAD3200EA8BCF /* PrecisionCalTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = PrecisionCalTests;
-			sourceTree = "<group>";
-		};
-		105FC5962E9EAD3200EA8BCF /* PrecisionCalUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = PrecisionCalUITests;
-			sourceTree = "<group>";
-		};
-/* End PBXFileSystemSynchronizedRootGroup section */
-
 /* Begin PBXFrameworksBuildPhase section */
 		105FC5772E9EAD3100EA8BCF /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				XX298127CFBB2CF3FA631BXX /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,6 +57,24 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		105FC57C2E9EAD3100EA8BCF /* PrecisionCal */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PrecisionCal;
+			sourceTree = "<group>";
+		};
+		105FC58C2E9EAD3200EA8BCF /* PrecisionCalTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PrecisionCalTests;
+			sourceTree = "<group>";
+		};
+		105FC5962E9EAD3200EA8BCF /* PrecisionCalUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = PrecisionCalUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXGroup section */
 		105FC5712E9EAD3100EA8BCF = {
@@ -112,6 +117,7 @@
 			);
 			name = PrecisionCal;
 			packageProductDependencies = (
+				XXDCC169DE7B2F3C1C8B10XX /* RevenueCat */,
 			);
 			productName = PrecisionCal;
 			productReference = 105FC57A2E9EAD3100EA8BCF /* PrecisionCal.app */;
@@ -204,6 +210,9 @@
 				105FC5792E9EAD3100EA8BCF /* PrecisionCal */,
 				105FC5882E9EAD3200EA8BCF /* PrecisionCalTests */,
 				105FC5922E9EAD3200EA8BCF /* PrecisionCalUITests */,
+			);
+			packageReferences = (
+				XX4AC81916604C4344ADC0XX /* XCRemoteSwiftPackageReference "purchases-ios-spm" */,
 			);
 		};
 /* End PBXProject section */
@@ -587,6 +596,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		XX4AC81916604C4344ADC0XX /* XCRemoteSwiftPackageReference "purchases-ios-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios-spm.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		XXDCC169DE7B2F3C1C8B10XX /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = XX4AC81916604C4344ADC0XX /* XCRemoteSwiftPackageReference "purchases-ios-spm" */;
+			productName = RevenueCat;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 105FC5722E9EAD3100EA8BCF /* Project object */;
 }

@@ -1,9 +1,20 @@
 import SwiftUI
 import SwiftData
+import RevenueCat
 
 @main
 struct PrecisionCalApp: App {
     @AppStorage("hasOnboarded") private var hasOnboarded: Bool = false
+    @State private var store = StoreViewModel()
+
+    init() {
+        #if DEBUG
+        Purchases.logLevel = .debug
+        Purchases.configure(withAPIKey: Config.EXPO_PUBLIC_REVENUECAT_TEST_API_KEY)
+        #else
+        Purchases.configure(withAPIKey: Config.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY)
+        #endif
+    }
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -31,6 +42,7 @@ struct PrecisionCalApp: App {
             RootView()
                 .preferredColorScheme(.light)
                 .tint(PrecisionCalTheme.terracotta)
+                .environment(store)
         }
         .modelContainer(sharedModelContainer)
     }

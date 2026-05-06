@@ -3,6 +3,7 @@ import SwiftData
 
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(StoreViewModel.self) private var store
     @Query private var profiles: [UserProfile]
     @Query(sort: \Meal.createdAt, order: .reverse) private var meals: [Meal]
     @Query(sort: \Calibration.createdAt, order: .reverse) private var calibrations: [Calibration]
@@ -10,6 +11,7 @@ struct ProfileView: View {
 
     @State private var calibrating: Bool = false
     @State private var calibrationToast: String? = nil
+    @State private var showPaywall: Bool = false
 
     private var profile: UserProfile? { profiles.first }
 
@@ -28,6 +30,8 @@ struct ProfileView: View {
                         profileCard(profile)
                         targetsCard(profile)
                     }
+
+                    subscriptionCard
 
                     calibrationCard
 
@@ -52,7 +56,65 @@ struct ProfileView: View {
                         .padding(.top, 8)
                 }
             }
+            .fullScreenCover(isPresented: $showPaywall) {
+                PaywallView(store: store)
+            }
         }
+    }
+
+    private var subscriptionCard: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            if !store.isPremium { showPaywall = true }
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [PrecisionCalTheme.terracotta, PrecisionCalTheme.terracottaDeep],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 40, height: 40)
+                    Image(systemName: store.isPremium ? "checkmark.seal.fill" : "sparkles")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(store.isPremium ? "PrecisionCal Pro" : "Upgrade to Pro")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(PrecisionCalTheme.textPrimary)
+                    Text(store.isPremium ? "Active — thank you for supporting calibration." : "Unlock unlimited scans & weekly calibration.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(PrecisionCalTheme.textSecondary)
+                        .lineLimit(2)
+                }
+                Spacer()
+                if !store.isPremium {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(PrecisionCalTheme.textTertiary)
+                }
+            }
+            .padding(18)
+            .background {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(Color.white.opacity(0.55))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [PrecisionCalTheme.terracotta.opacity(0.5), PrecisionCalTheme.glassStroke],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 1
+                            )
+                    }
+                    .shadow(color: PrecisionCalTheme.terracotta.opacity(0.12), radius: 14, x: 0, y: 8)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var header: some View {
