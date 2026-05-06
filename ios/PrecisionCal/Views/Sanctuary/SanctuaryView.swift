@@ -161,9 +161,9 @@ struct SanctuaryView: View {
                     composerOpen = true
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "feather")
+                        Image(systemName: "square.and.pencil")
                             .font(.system(size: 14, weight: .bold))
-                        Text("Speak")
+                        Text("Add Post")
                             .font(.system(size: 13, weight: .bold))
                             .tracking(1.2)
                     }
