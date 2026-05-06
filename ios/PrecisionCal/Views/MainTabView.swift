@@ -11,9 +11,9 @@ struct MainTabView: View {
                 }
                 .tag(0)
 
-            MealLogView()
+            AnalyticsView()
                 .tabItem {
-                    Label("Meals", systemImage: "fork.knife")
+                    Label("Trends", systemImage: "chart.line.uptrend.xyaxis")
                 }
                 .tag(1)
 
@@ -21,31 +21,19 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Scan", systemImage: "barcode.viewfinder")
                 }
-                .tag(4)
-
-            SanctuaryView()
-                .tabItem {
-                    Label("Sanctuary", systemImage: "leaf.fill")
-                }
-                .tag(5)
-
-            WaterView()
-                .tabItem {
-                    Label("Water", systemImage: "drop.fill")
-                }
                 .tag(2)
 
-            AnalyticsView()
+            ScannedProductsLibraryView()
                 .tabItem {
-                    Label("Trends", systemImage: "chart.line.uptrend.xyaxis")
+                    Label("Pantry", systemImage: "shippingbox.fill")
                 }
-                .tag(6)
+                .tag(3)
 
             ProfileView()
                 .tabItem {
                     Label("Profile", systemImage: "person.crop.circle.fill")
                 }
-                .tag(3)
+                .tag(4)
         }
         .tint(PrecisionCalTheme.terracotta)
         .onAppear {

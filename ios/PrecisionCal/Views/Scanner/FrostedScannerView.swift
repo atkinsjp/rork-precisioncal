@@ -76,7 +76,7 @@ struct FrostedScannerView: View {
             }
         }, message: { Text(error ?? "") })
         .sheet(isPresented: $showLibrary) {
-            ScannedProductsLibraryView()
+            ScannedProductsLibraryView(isModal: true)
         }
     }
 

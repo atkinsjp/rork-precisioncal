@@ -7,6 +7,8 @@ struct ScannedProductsLibraryView: View {
     @Query(sort: \ScannedProduct.lastScannedAt, order: .reverse) private var products: [ScannedProduct]
     @Query private var profiles: [UserProfile]
 
+    var isModal: Bool = false
+
     @State private var search: String = ""
     @State private var selectedFilter: RiskFilter = .all
     @State private var detail: ScannedProduct?
@@ -81,8 +83,10 @@ struct ScannedProductsLibraryView: View {
             .navigationTitle("Pantry")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+                if isModal {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { dismiss() }
+                    }
                 }
             }
             .sheet(item: $detail) { p in

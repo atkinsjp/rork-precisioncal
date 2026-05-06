@@ -15,6 +15,9 @@ struct DashboardView: View {
     @State private var drawerOffset: CGFloat = 0
     @State private var drawerOpen: Bool = false
     @State private var fallbackIndex: Int = 0
+    @State private var showMeals: Bool = false
+    @State private var showWater: Bool = false
+    @State private var showSanctuary: Bool = false
 
     /// Curated complete focus directives, used for instant tap-to-cycle
     /// and as fallback when the AI returns a fragment.
@@ -160,6 +163,8 @@ struct DashboardView: View {
 
                 bloomSection
 
+                quickActionsRow
+
                 if drawerOpen {
                     DeepDiveDrawer(
                         metabolicImpact: latestMetabolicImpact,
@@ -187,6 +192,24 @@ struct DashboardView: View {
             .padding(.top, 12)
         }
         .scrollIndicators(.hidden)
+        .sheet(isPresented: $showMeals) {
+            NavigationStack { MealLogView() }
+        }
+        .sheet(isPresented: $showWater) {
+            NavigationStack {
+                WaterView()
+                    .navigationTitle("Water")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showWater = false }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showSanctuary) {
+            SanctuaryView()
+        }
         .task {
             await refreshDirective(force: false)
         }
@@ -286,6 +309,28 @@ struct DashboardView: View {
         }
     }
 
+    private var quickActionsRow: some View {
+        HStack(spacing: 10) {
+            QuickActionTile(
+                title: "Meals",
+                icon: "fork.knife",
+                color: PrecisionCalTheme.sage
+            ) { showMeals = true }
+
+            QuickActionTile(
+                title: "Water",
+                icon: "drop.fill",
+                color: PrecisionCalTheme.hydrationColor
+            ) { showWater = true }
+
+            QuickActionTile(
+                title: "Sanctuary",
+                icon: "leaf.fill",
+                color: PrecisionCalTheme.terracotta
+            ) { showSanctuary = true }
+        }
+    }
+
     private var recentMealsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Recent meals")
@@ -372,6 +417,59 @@ struct DashboardView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Quick action tile
+
+private struct QuickActionTile: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let action: () -> Void
+
+    @State private var pressed = false
+
+    var body: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            VStack(spacing: 8) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.18))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(PrecisionCalTheme.textPrimary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(PrecisionCalTheme.glassStroke, lineWidth: 1)
+                    )
+            }
+            .scaleEffect(pressed ? 0.96 : 1)
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) { pressed = true }
+                }
+                .onEnded { _ in
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) { pressed = false }
+                }
+        )
     }
 }
 
