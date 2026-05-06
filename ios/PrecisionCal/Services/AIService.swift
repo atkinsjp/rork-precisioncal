@@ -99,9 +99,9 @@ nonisolated struct Pass3Output: Codable, Sendable {
 nonisolated struct Pass4Output: Codable, Sendable {
     let title: String?
     let items: [Pass3Item]
-    let metabolicImpact: String
-    let mealScore: Int
-    let qcNotes: String
+    let metabolicImpact: String?
+    let mealScore: Int?
+    let qcNotes: String?
 }
 
 nonisolated struct Pass5Adjustment: Codable, Sendable {
@@ -359,16 +359,17 @@ nonisolated final class AIService: Sendable {
             )
         }
         let qcCombined: String = {
-            guard let note = p5.summaryNote, !note.isEmpty else { return p4.qcNotes }
-            if p4.qcNotes.isEmpty { return note }
-            return p4.qcNotes + " " + note
+            let base = p4.qcNotes ?? ""
+            guard let note = p5.summaryNote, !note.isEmpty else { return base }
+            if base.isEmpty { return note }
+            return base + " " + note
         }()
         let sheenDetected = p5.adjustments.contains { $0.lipidSheenDetected }
         let result = MealAnalysisResult(
             title: finalTitle,
             items: mergedItems,
-            metabolicImpact: p4.metabolicImpact,
-            mealScore: max(0, min(100, p4.mealScore)),
+            metabolicImpact: (p4.metabolicImpact?.isEmpty == false ? p4.metabolicImpact! : "Balanced"),
+            mealScore: max(0, min(100, p4.mealScore ?? 0)),
             qcNotes: qcCombined,
             lipidSheenDetected: sheenDetected,
             lipidNote: p5.summaryNote ?? ""
@@ -435,9 +436,9 @@ nonisolated final class AIService: Sendable {
                     waterMl: $0.waterMl
                 )
             },
-            metabolicImpact: p4.metabolicImpact,
-            mealScore: max(0, min(100, p4.mealScore)),
-            qcNotes: p4.qcNotes,
+            metabolicImpact: (p4.metabolicImpact?.isEmpty == false ? p4.metabolicImpact! : "Balanced"),
+            mealScore: max(0, min(100, p4.mealScore ?? 0)),
+            qcNotes: p4.qcNotes ?? "",
             lipidSheenDetected: false,
             lipidNote: ""
         )
@@ -735,19 +736,50 @@ nonisolated final class AIService: Sendable {
 
     private func cleanJSON(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Strip code fences (``` or ```json)
         if s.hasPrefix("```") {
             if let firstNewline = s.firstIndex(of: "\n") {
                 s = String(s[s.index(after: firstNewline)...])
             }
-            if s.hasSuffix("```") {
-                s = String(s.dropLast(3))
+            if let fenceEnd = s.range(of: "```", options: .backwards) {
+                s = String(s[..<fenceEnd.lowerBound])
             }
             s = s.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        if let start = s.firstIndex(of: "{"), let end = s.lastIndex(of: "}") {
-            s = String(s[start...end])
+        // Extract the FIRST balanced top-level JSON object.
+        // The model occasionally emits prose or multiple objects; first/last brace is unsafe.
+        guard let start = s.firstIndex(of: "{") else { return s }
+        let chars = Array(s[start...])
+        var depth = 0
+        var inString = false
+        var escape = false
+        var endOffset: Int? = nil
+        for i in 0..<chars.count {
+            let c = chars[i]
+            if inString {
+                if escape { escape = false; continue }
+                if c == "\\" { escape = true; continue }
+                if c == "\"" { inString = false }
+                continue
+            }
+            switch c {
+            case "\"": inString = true
+            case "{": depth += 1
+            case "}":
+                depth -= 1
+                if depth == 0 { endOffset = i; break }
+            default: break
+            }
+            if endOffset != nil { break }
         }
-        return s
+        if let e = endOffset {
+            return String(chars[0...e])
+        }
+        // Unbalanced — return from first '{' to last '}' so repair logic can try.
+        if let last = s.lastIndex(of: "}") {
+            return String(s[start...last])
+        }
+        return String(s[start...])
     }
 
     private func resizeForUpload(imageData: Data, maxBytes: Int) throws -> String {
