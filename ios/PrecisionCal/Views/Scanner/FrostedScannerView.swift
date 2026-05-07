@@ -3,6 +3,7 @@ import SwiftData
 
 struct FrostedScannerView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(StoreViewModel.self) private var store
     @Query private var profiles: [UserProfile]
 
     @State private var scannedBarcode: String?
@@ -13,6 +14,7 @@ struct FrostedScannerView: View {
     @State private var milkRippleProgress: CGFloat = 0
     @State private var milkRippleVisible = false
     @State private var showLibrary = false
+    @State private var showPaywall = false
 
     var body: some View {
         ZStack {
@@ -77,6 +79,9 @@ struct FrostedScannerView: View {
         }, message: { Text(error ?? "") })
         .sheet(isPresented: $showLibrary) {
             ScannedProductsLibraryView(isModal: true)
+        }
+        .fullScreenCover(isPresented: $showPaywall) {
+            PaywallView(store: store)
         }
     }
 
@@ -200,8 +205,15 @@ struct FrostedScannerView: View {
 
     private func handleScanned(_ code: String) {
         guard !isLookingUp, scannedBarcode != code else { return }
+        guard EntitlementGate.canScanBarcode(isPremium: store.isPremium) else {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            scannedBarcode = nil
+            showPaywall = true
+            return
+        }
         scannedBarcode = code
         isLookingUp = true
+        EntitlementGate.recordBarcodeScan()
 
         Task {
             do {

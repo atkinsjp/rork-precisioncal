@@ -213,12 +213,21 @@ struct ProfileView: View {
                             .tint(PrecisionCalTheme.textPrimary)
                             .scaleEffect(0.8)
                     } else {
-                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Image(systemName: store.isPremium ? "arrow.triangle.2.circlepath" : "lock.fill")
                             .font(.system(size: 13, weight: .bold))
                     }
                     Text(calibrating ? "Recalibrating…" : "Re-run calibration")
                         .font(.system(size: 13, weight: .bold))
                         .tracking(1.1)
+                    if !store.isPremium && !calibrating {
+                        Text("PRO")
+                            .font(.system(size: 9, weight: .bold))
+                            .tracking(0.8)
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(PrecisionCalTheme.terracotta))
+                    }
                 }
                 .foregroundStyle(PrecisionCalTheme.textPrimary)
                 .frame(maxWidth: .infinity)
@@ -303,6 +312,11 @@ struct ProfileView: View {
 
     private func runCalibration() async {
         guard !calibrating else { return }
+        guard store.isPremium else {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            showPaywall = true
+            return
+        }
         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         calibrating = true
         let inserted = await SundayCalibrationService.shared.runManually(

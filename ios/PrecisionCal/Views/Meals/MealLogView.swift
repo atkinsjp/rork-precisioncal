@@ -5,6 +5,7 @@ import PhotosUI
 struct MealLogView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(StoreViewModel.self) private var store
     @Query(sort: \Meal.createdAt, order: .reverse) private var meals: [Meal]
 
     @State private var showCapture = false
@@ -16,6 +17,10 @@ struct MealLogView: View {
     @State private var quickItems: [String] = []
     @State private var currentPass: Int = 1
     @State private var error: String?
+    @State private var showPaywall: Bool = false
+
+    private var canScan: Bool { EntitlementGate.canScanMeal(isPremium: store.isPremium) }
+    private var scansRemaining: Int { EntitlementGate.mealScansRemaining(isPremium: store.isPremium) }
 
     var body: some View {
         ZStack {
@@ -82,6 +87,9 @@ struct MealLogView: View {
         .alert("Couldn't analyze", isPresented: .constant(error != nil), actions: {
             Button("OK") { error = nil }
         }, message: { Text(error ?? "") })
+        .fullScreenCover(isPresented: $showPaywall) {
+            PaywallView(store: store)
+        }
     }
 
     private var header: some View {
@@ -125,16 +133,32 @@ struct MealLogView: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(2)
 
-                PearlescentButton(action: { showCapture = true }) {
+                PearlescentButton(action: {
+                    if canScan {
+                        showCapture = true
+                    } else {
+                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                        showPaywall = true
+                    }
+                }) {
                     HStack(spacing: 10) {
-                        Image(systemName: "photo.on.rectangle.angled")
+                        Image(systemName: canScan ? "photo.on.rectangle.angled" : "lock.fill")
                             .font(.system(size: 16, weight: .semibold))
-                        Text("Choose photo")
+                        Text(canScan ? "Choose photo" : "Unlock unlimited scans")
                             .font(.system(size: 16, weight: .semibold))
                     }
                     .foregroundStyle(PrecisionCalTheme.textPrimary)
                 }
                 .padding(.horizontal, 8)
+
+                if !store.isPremium {
+                    Text(scansRemaining > 0
+                         ? "\(scansRemaining) free AI scan\(scansRemaining == 1 ? "" : "s") left"
+                         : "You've used your free AI scans.")
+                        .font(.system(size: 11, weight: .medium))
+                        .tracking(0.4)
+                        .foregroundStyle(PrecisionCalTheme.textTertiary)
+                }
 
                 Button {
                     showManualEntry = true
@@ -171,6 +195,11 @@ struct MealLogView: View {
 
     @MainActor
     private func startAnalysis(imageData: Data) async {
+        guard canScan else {
+            showPaywall = true
+            return
+        }
+        EntitlementGate.recordMealScan()
         let meal = Meal(imageData: imageData, status: "analyzing")
         modelContext.insert(meal)
         try? modelContext.save()
