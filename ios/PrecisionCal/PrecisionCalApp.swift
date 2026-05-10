@@ -32,6 +32,7 @@ struct PrecisionCalApp: App {
             SanctuaryComment.self,
             RoadmapInsight.self,
             BodyWeightEntry.self,
+            ShoppingItem.self,
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

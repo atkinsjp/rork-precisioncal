@@ -13,6 +13,7 @@ struct ScannedProductsLibraryView: View {
     @State private var selectedFilter: RiskFilter = .all
     @State private var detail: ScannedProduct?
     @State private var animate: Bool = false
+    @State private var showShoppingList: Bool = false
 
     enum RiskFilter: String, CaseIterable, Identifiable {
         case all = "All"
@@ -88,6 +89,19 @@ struct ScannedProductsLibraryView: View {
                         Button("Done") { dismiss() }
                     }
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        let gen = UIImpactFeedbackGenerator(style: .soft)
+                        gen.impactOccurred()
+                        showShoppingList = true
+                    } label: {
+                        Image(systemName: "cart.fill")
+                            .foregroundStyle(PrecisionCalTheme.terracotta)
+                    }
+                }
+            }
+            .sheet(isPresented: $showShoppingList) {
+                ShoppingListView()
             }
             .sheet(item: $detail) { p in
                 ProductDetailSheet(product: p, profile: profiles.first)
