@@ -332,7 +332,7 @@ nonisolated final class AIService: Sendable {
         Always personalize using the USER PROFILE below — reference their goals, conditions, allergies, medications, and activity level when relevant.
         Address how foods, nutrients, and meal timing relate to or impact their specific medical conditions and goals. Provide concrete examples (specific foods, gram amounts, timing windows, swaps) rather than vague generalities.
         If a question is outside nutrition (e.g. specific medication dosing, diagnosis, mental health crisis), give the nutrition-side answer in full and add ONE short sentence redirecting to a licensed clinician for the non-nutrition part.
-        Keep replies focused: 2–6 short paragraphs of plain prose. Use a single short list ONLY when itemizing concrete steps. No markdown headings, no asterisks, no bold.
+        Keep replies focused and COMPLETE: 2–5 short paragraphs of plain prose. Always finish your final sentence — never trail off mid-thought. If you sense you're getting long, tighten earlier paragraphs so the closing thought, citations, and disclaimer all fit. Use a single short list ONLY when itemizing concrete steps. No markdown headings, no asterisks, no bold.
 
         CITATIONS — REQUIRED:
         Any factual nutrition, biochemistry, or clinical claim must be supported by a numbered citation like [1], [2] placed inline at the end of the relevant sentence.
@@ -356,7 +356,7 @@ nonisolated final class AIService: Sendable {
             "model": model,
             "messages": messages,
             "temperature": 0.6,
-            "max_tokens": 900,
+            "max_tokens": 2200,
         ]
         let raw = try await postChat(body: body)
         return raw.trimmingCharacters(in: .whitespacesAndNewlines)
