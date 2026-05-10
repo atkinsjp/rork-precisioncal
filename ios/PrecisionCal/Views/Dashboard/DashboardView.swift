@@ -18,6 +18,7 @@ struct DashboardView: View {
     @State private var showMeals: Bool = false
     @State private var showWater: Bool = false
     @State private var showSanctuary: Bool = false
+    @State private var showShopping: Bool = false
 
     /// Curated complete focus directives, used for instant tap-to-cycle
     /// and as fallback when the AI returns a fragment.
@@ -210,6 +211,9 @@ struct DashboardView: View {
         .sheet(isPresented: $showSanctuary) {
             SanctuaryView()
         }
+        .sheet(isPresented: $showShopping) {
+            ShoppingListView()
+        }
         .task {
             await refreshDirective(force: false)
         }
@@ -322,6 +326,12 @@ struct DashboardView: View {
                 icon: "drop.fill",
                 color: PrecisionCalTheme.hydrationColor
             ) { showWater = true }
+
+            QuickActionTile(
+                title: "Shop",
+                icon: "cart.fill",
+                color: PrecisionCalTheme.carbColor
+            ) { showShopping = true }
 
             QuickActionTile(
                 title: "Sanctuary",
