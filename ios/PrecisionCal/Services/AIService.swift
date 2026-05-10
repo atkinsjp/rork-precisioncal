@@ -54,6 +54,11 @@ nonisolated enum AIError: Error, LocalizedError, Sendable {
     }
 }
 
+nonisolated struct DoctorChatTurn: Sendable {
+    let role: String // "user" or "assistant"
+    let content: String
+}
+
 nonisolated struct Pass1Item: Codable, Sendable {
     let name: String
     let preparation: String
@@ -308,6 +313,40 @@ nonisolated final class AIService: Sendable {
         ]
         let raw = try await postChat(body: body)
         return try decode(InnovationReport.self, from: raw)
+    }
+
+    // MARK: - Dr. PrecisionCal Chat
+
+    /// Conversational PhD nutritionist. Returns warm, plain prose tied to the user's profile.
+    func chatWithDoctor(
+        profileSummary: String,
+        history: [DoctorChatTurn],
+        userMessage: String
+    ) async throws -> String {
+        let system = """
+        You are Dr. PrecisionCal, a PhD-level integrative nutritionist and the user's personal sanctuary advisor.
+        Speak with warmth, clarity, and clinical depth. Never scold. Be direct, specific, and actionable.
+        Always personalize using the USER PROFILE below — reference their goals, conditions, allergies, medications, and activity level when relevant.
+        Address how foods, nutrients, and meal timing relate to or impact their specific medical conditions and goals.
+        If a question is outside nutrition (e.g. specific medication dosing, diagnosis, mental health crisis), gently redirect to a licensed clinician while still offering nutrition-side support.
+        Keep replies focused: 2–6 short paragraphs, plain prose. Use a single short list ONLY when itemizing concrete steps. No markdown headings, no asterisks. End on a warm, encouraging note when natural.
+
+        USER PROFILE:
+        \(profileSummary)
+        """
+        var messages: [[String: Any]] = [["role": "system", "content": system]]
+        for turn in history.suffix(24) {
+            messages.append(["role": turn.role, "content": turn.content])
+        }
+        messages.append(["role": "user", "content": userMessage])
+        let body: [String: Any] = [
+            "model": model,
+            "messages": messages,
+            "temperature": 0.6,
+            "max_tokens": 900,
+        ]
+        let raw = try await postChat(body: body)
+        return raw.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - 4-Pass Sequential Chain

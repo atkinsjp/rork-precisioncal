@@ -19,6 +19,7 @@ struct DashboardView: View {
     @State private var showWater: Bool = false
     @State private var showSanctuary: Bool = false
     @State private var showShopping: Bool = false
+    @State private var showDoctorChat: Bool = false
 
     /// Curated complete focus directives, used for instant tap-to-cycle
     /// and as fallback when the AI returns a fragment.
@@ -149,6 +150,11 @@ struct DashboardView: View {
                     onTap: { cycleFocus() }
                 )
 
+                AskDoctorCard {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    showDoctorChat = true
+                }
+
                 if let cal = activeCalibration {
                     SundayCalibrationCard(calibration: cal) {
                         withAnimation(.easeInOut(duration: 0.5)) {
@@ -213,6 +219,9 @@ struct DashboardView: View {
         }
         .sheet(isPresented: $showShopping) {
             ShoppingListView()
+        }
+        .sheet(isPresented: $showDoctorChat) {
+            DoctorChatView()
         }
         .task {
             await refreshDirective(force: false)
