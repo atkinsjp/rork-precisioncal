@@ -18,6 +18,7 @@ struct MealLogView: View {
     @State private var currentPass: Int = 1
     @State private var error: String?
     @State private var showPaywall: Bool = false
+    @State private var editingMeal: Meal?
 
     private var canScan: Bool { EntitlementGate.canScanMeal(isPremium: store.isPremium) }
     private var scansRemaining: Int { EntitlementGate.mealScansRemaining(isPremium: store.isPremium) }
@@ -48,8 +49,13 @@ struct MealLogView: View {
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
+                                Button {
+                                    editingMeal = meal
+                                } label: { Label("Edit", systemImage: "square.and.pencil") }
                                 Button(role: .destructive) {
                                     modelContext.delete(meal)
+                                    try? modelContext.save()
+                                    UINotificationFeedbackGenerator().notificationOccurred(.warning)
                                 } label: { Label("Delete", systemImage: "trash") }
                             }
                         }
@@ -89,6 +95,10 @@ struct MealLogView: View {
         }, message: { Text(error ?? "") })
         .fullScreenCover(isPresented: $showPaywall) {
             PaywallView(store: store)
+        }
+        .sheet(item: $editingMeal) { meal in
+            EditMealView(meal: meal)
+                .presentationDetents([.large])
         }
     }
 

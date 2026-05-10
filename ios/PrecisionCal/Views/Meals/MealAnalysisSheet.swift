@@ -8,6 +8,7 @@ struct MealAnalysisSheet: View {
 
     @State private var showMirror: Bool = false
     @State private var showRipple: Bool = false
+    @State private var showEdit: Bool = false
 
     var body: some View {
         ZStack {
@@ -64,18 +65,36 @@ struct MealAnalysisSheet: View {
             gen.notificationOccurred(.success)
         }
         .overlay(alignment: .topTrailing) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(PrecisionCalTheme.textPrimary)
-                    .frame(width: 34, height: 34)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().stroke(PrecisionCalTheme.glassStroke, lineWidth: 1))
+            HStack(spacing: 10) {
+                if meal.status == "complete" {
+                    Button {
+                        showEdit = true
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(PrecisionCalTheme.textPrimary)
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay(Circle().stroke(PrecisionCalTheme.glassStroke, lineWidth: 1))
+                    }
+                }
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(PrecisionCalTheme.textPrimary)
+                        .frame(width: 34, height: 34)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(PrecisionCalTheme.glassStroke, lineWidth: 1))
+                }
             }
             .padding(.top, 14)
             .padding(.trailing, 18)
+        }
+        .sheet(isPresented: $showEdit) {
+            EditMealView(meal: meal)
+                .presentationDetents([.large])
         }
     }
 
