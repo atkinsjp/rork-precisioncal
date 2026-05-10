@@ -40,6 +40,8 @@ struct ProfileView: View {
 
                     legalCard
 
+                    ownerModeCard
+
                     resetCard
 
                     Spacer(minLength: 40)
@@ -332,6 +334,47 @@ struct ProfileView: View {
         .simultaneousGesture(TapGesture().onEnded {
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         })
+    }
+
+    private var ownerModeCard: some View {
+        let bindingOn = Binding<Bool>(
+            get: { store.ownerOverride },
+            set: { newValue in
+                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                store.setOwnerOverride(newValue)
+            }
+        )
+        return GlassCard(cornerRadius: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(PrecisionCalTheme.terracotta.opacity(0.14))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "key.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(PrecisionCalTheme.terracotta)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Owner / Tester Mode")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(PrecisionCalTheme.textPrimary)
+                        Text(store.ownerOverride ? "All Pro features unlocked." : "Unlock all Pro features without a subscription.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(PrecisionCalTheme.textSecondary)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    Toggle("", isOn: bindingOn)
+                        .labelsHidden()
+                        .tint(PrecisionCalTheme.terracotta)
+                }
+                Text("For the app owner and internal testers only. This bypasses the paywall on this device.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(PrecisionCalTheme.textTertiary)
+            }
+            .padding(18)
+        }
     }
 
     private var resetCard: some View {
