@@ -17,6 +17,13 @@ struct VisionScreen: View {
             .ignoresSafeArea()
 
             VStack {
+                Spacer().frame(height: 24)
+                Image("AppLogo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 220, maxHeight: 220)
+                    .opacity(titleAppeared ? 1 : 0)
+                    .scaleEffect(titleAppeared ? 1 : 0.92)
                 Spacer()
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 8) {
