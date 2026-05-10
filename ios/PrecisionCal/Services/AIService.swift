@@ -179,7 +179,7 @@ nonisolated final class AIService: Sendable {
                 ["role": "user", "content": "Profile:\n\(profileSummary)\n\nWrite the 300-word health protocol now."],
             ],
             "temperature": 0.7,
-            "max_tokens": 900,
+            "max_tokens": 2000,
         ]
         let raw = try await postChat(body: body)
         return raw.trimmingCharacters(in: .whitespacesAndNewlines)
