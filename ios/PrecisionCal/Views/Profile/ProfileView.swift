@@ -13,6 +13,9 @@ struct ProfileView: View {
     @State private var calibrationToast: String? = nil
     @State private var showPaywall: Bool = false
 
+    private let privacyURL = URL(string: "https://precisioncal.app/privacy.html")!
+    private let termsURL = URL(string: "https://precisioncal.app/terms.html")!
+
     private var profile: UserProfile? { profiles.first }
 
     private var weekMealCount: Int {
@@ -34,6 +37,8 @@ struct ProfileView: View {
                     subscriptionCard
 
                     calibrationCard
+
+                    legalCard
 
                     resetCard
 
@@ -287,6 +292,46 @@ struct ProfileView: View {
                 }
                 .shadow(color: PrecisionCalTheme.terracotta.opacity(0.08), radius: 14, x: 0, y: 8)
         }
+    }
+
+    private var legalCard: some View {
+        GlassCard(cornerRadius: 18) {
+            VStack(spacing: 0) {
+                legalRow(icon: "hand.raised.fill", label: "Privacy Policy", url: privacyURL)
+                Divider().padding(.leading, 56).opacity(0.5)
+                legalRow(icon: "doc.text.fill", label: "Terms of Service", url: termsURL)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func legalRow(icon: String, label: String, url: URL) -> some View {
+        Link(destination: url) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(PrecisionCalTheme.terracotta.opacity(0.14))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(PrecisionCalTheme.terracotta)
+                }
+                Text(label)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(PrecisionCalTheme.textPrimary)
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(PrecisionCalTheme.textTertiary)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(TapGesture().onEnded {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        })
     }
 
     private var resetCard: some View {
