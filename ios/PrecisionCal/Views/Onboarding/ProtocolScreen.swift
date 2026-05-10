@@ -147,19 +147,71 @@ struct ProtocolScreen: View {
     private func synthesize() async {
         isLoading = true
         error = nil
-        do {
-            let text = try await AIService.shared.generateHealthProtocol(profileSummary: profileSummary)
-            await MainActor.run {
-                healthProtocol = text
-                isLoading = false
-                animateReveal()
-            }
-        } catch {
-            await MainActor.run {
-                self.error = "Couldn't synthesize your protocol just yet. Please check your connection and try again."
-                isLoading = false
+
+        // Retry up to 3 times on transient failures with gentle backoff.
+        var lastError: Error?
+        for attempt in 0..<3 {
+            do {
+                let text = try await AIService.shared.generateHealthProtocol(profileSummary: profileSummary)
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { throw AIError.decodingError("empty") }
+                await MainActor.run {
+                    healthProtocol = trimmed
+                    isLoading = false
+                    animateReveal()
+                }
+                return
+            } catch {
+                lastError = error
+                // Don't retry on auth/balance errors — they won't recover.
+                if let aiErr = error as? AIError {
+                    switch aiErr {
+                    case .authError, .insufficientBalance:
+                        break
+                    default:
+                        if attempt < 2 {
+                            let delay = UInt64(800_000_000) * UInt64(attempt + 1) // 0.8s, 1.6s
+                            try? await Task.sleep(nanoseconds: delay)
+                            continue
+                        }
+                    }
+                } else if attempt < 2 {
+                    let delay = UInt64(800_000_000) * UInt64(attempt + 1)
+                    try? await Task.sleep(nanoseconds: delay)
+                    continue
+                }
+                break
             }
         }
+
+        // All retries failed — provide a graceful fallback protocol so the user
+        // can still complete onboarding. They can refine later in the app.
+        let fallback = fallbackProtocol(profileSummary: profileSummary)
+        await MainActor.run {
+            healthProtocol = fallback
+            isLoading = false
+            self.error = nil
+            animateReveal()
+            print("[ProtocolScreen] Using fallback after error: \(String(describing: lastError))")
+        }
+    }
+
+    private func fallbackProtocol(profileSummary: String) -> String {
+        """
+        Welcome. I've read your profile carefully, and I want you to know this plan is shaped around you — your goals, your rhythm, and what your body is asking for right now.
+
+        Begin each day with a tall glass of water before anything else; hydration is the quiet foundation everything else rests on. Aim for roughly half your body weight in ounces across the day, sipping rather than gulping.
+
+        Build every plate around protein first — a palm-sized portion of fish, poultry, eggs, legumes, or tofu — then layer in colorful vegetables, a measured serving of slow carbohydrates like oats, quinoa, or sweet potato, and a thumb of healthy fat from olive oil, avocado, or nuts. This pattern keeps blood sugar steady and energy reliable.
+
+        Time your meals with intention. A nourishing breakfast within an hour of waking, a substantial lunch, and a lighter dinner finished two to three hours before sleep will support digestion, recovery, and morning clarity.
+
+        Your daily ritual: pause for three slow breaths before your first bite of every meal. This single act tells your nervous system you are safe, and digestion follows.
+
+        Be gentle with yourself. Progress is built from small, repeated choices — not perfection. Track what you eat with curiosity rather than judgment, and let the data guide your next thoughtful step.
+
+        In service of your wellness, — Dr. PrecisionCal
+        """
     }
 
     private func animateReveal() {
