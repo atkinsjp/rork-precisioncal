@@ -4,6 +4,7 @@ import SwiftData
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(StoreViewModel.self) private var store
+    @Environment(OwnerAuthService.self) private var ownerAuth
     @Query private var profiles: [UserProfile]
     @Query(sort: \Meal.createdAt, order: .reverse) private var meals: [Meal]
     @Query(sort: \Calibration.createdAt, order: .reverse) private var calibrations: [Calibration]
@@ -345,7 +346,7 @@ struct ProfileView: View {
             }
         )
         return GlassCard(cornerRadius: 18) {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 12) {
                     ZStack {
                         Circle()
@@ -369,7 +370,39 @@ struct ProfileView: View {
                         .labelsHidden()
                         .tint(PrecisionCalTheme.terracotta)
                 }
-                Text("For the app owner and internal testers only. This bypasses the paywall on this device.")
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    Task { await ownerAuth.verifyOwner() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if ownerAuth.isVerifying {
+                            ProgressView().tint(.white).scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "applelogo")
+                                .font(.system(size: 13, weight: .bold))
+                        }
+                        Text(ownerAuth.isVerifying ? "Verifying…" : (store.ownerOverride && ownerAuth.savedAppleUserID != nil ? "Apple ID verified" : "Auto-unlock with Apple ID"))
+                            .font(.system(size: 13, weight: .bold))
+                            .tracking(0.6)
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background {
+                        Capsule().fill(Color.black.opacity(0.88))
+                    }
+                }
+                .buttonStyle(.plain)
+                .disabled(ownerAuth.isVerifying)
+
+                if let err = ownerAuth.lastError {
+                    Text(err)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red.opacity(0.85))
+                }
+
+                Text("Sign in with Apple to auto-unlock for approved owner Apple IDs. Manual toggle is for internal testers only.")
                     .font(.system(size: 11))
                     .foregroundStyle(PrecisionCalTheme.textTertiary)
             }

@@ -5,7 +5,8 @@ import RevenueCat
 @main
 struct PrecisionCalApp: App {
     @AppStorage("hasOnboarded") private var hasOnboarded: Bool = false
-    @State private var store = StoreViewModel()
+    @State private var store: StoreViewModel
+    @State private var ownerAuth: OwnerAuthService
 
     init() {
         #if DEBUG
@@ -14,6 +15,9 @@ struct PrecisionCalApp: App {
         #else
         Purchases.configure(withAPIKey: Config.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY)
         #endif
+        let store = StoreViewModel()
+        _store = State(initialValue: store)
+        _ownerAuth = State(initialValue: OwnerAuthService(store: store))
     }
 
     var sharedModelContainer: ModelContainer = {
@@ -43,6 +47,8 @@ struct PrecisionCalApp: App {
                 .preferredColorScheme(.light)
                 .tint(PrecisionCalTheme.terracotta)
                 .environment(store)
+                .environment(ownerAuth)
+                .task { await ownerAuth.refreshSilently() }
         }
         .modelContainer(sharedModelContainer)
     }
