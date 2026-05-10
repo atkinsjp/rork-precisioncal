@@ -17,6 +17,8 @@ struct WaterView: View {
     @State private var t: Double = 0
     @State private var lastTapId: UUID?
     @State private var showManualLog = false
+    @State private var editingEntry: WaterEntry?
+    @State private var pendingDelete: WaterEntry?
 
     var body: some View {
         ScrollView {
@@ -52,7 +54,7 @@ struct WaterView: View {
         }
         .scrollIndicators(.hidden)
         .sheet(isPresented: $showManualLog) {
-            ManualWaterLogSheet { ml, date in
+            ManualWaterLogSheet(existing: nil) { ml, date in
                 let entry = WaterEntry(createdAt: date, amountMl: ml)
                 modelContext.insert(entry)
                 try? modelContext.save()
@@ -60,6 +62,30 @@ struct WaterView: View {
                 gen.impactOccurred()
             }
             .presentationDetents([.medium, .large])
+        }
+        .sheet(item: $editingEntry) { entry in
+            ManualWaterLogSheet(existing: entry) { ml, date in
+                entry.amountMl = ml
+                entry.createdAt = date
+                try? modelContext.save()
+                let gen = UIImpactFeedbackGenerator(style: .light)
+                gen.impactOccurred()
+            }
+            .presentationDetents([.medium, .large])
+        }
+        .confirmationDialog(
+            "Delete this entry?",
+            isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+            presenting: pendingDelete
+        ) { entry in
+            Button("Delete", role: .destructive) {
+                modelContext.delete(entry)
+                try? modelContext.save()
+                pendingDelete = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: { entry in
+            Text("\(Int(entry.amountMl)) ml at \(entry.createdAt.formatted(date: .abbreviated, time: .shortened))")
         }
         .onAppear {
             withAnimation(.linear(duration: 4).repeatForever(autoreverses: false)) {
@@ -121,24 +147,50 @@ struct WaterView: View {
                 .tracking(2.5)
                 .foregroundStyle(PrecisionCalTheme.textTertiary)
                 .padding(.horizontal, 4)
-            ForEach(todayEntries.prefix(6)) { entry in
-                GlassCard(cornerRadius: 14) {
-                    HStack {
-                        Image(systemName: "drop.fill")
-                            .foregroundStyle(PrecisionCalTheme.hydrationColor)
-                        Text("\(Int(entry.amountMl)) ml")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(PrecisionCalTheme.textPrimary)
-                        Spacer()
-                        Text(entry.createdAt.formatted(date: .omitted, time: .shortened))
-                            .font(.system(size: 13))
-                            .foregroundStyle(PrecisionCalTheme.textTertiary)
+            ForEach(todayEntries) { entry in
+                Button {
+                    editingEntry = entry
+                } label: {
+                    GlassCard(cornerRadius: 14) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "drop.fill")
+                                .foregroundStyle(PrecisionCalTheme.hydrationColor)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(Int(entry.amountMl)) ml")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(PrecisionCalTheme.textPrimary)
+                                Text(entry.createdAt.formatted(date: .omitted, time: .shortened))
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(PrecisionCalTheme.textTertiary)
+                            }
+                            Spacer()
+                            Image(systemName: "pencil")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(PrecisionCalTheme.textTertiary)
+                                .padding(.trailing, 4)
+                            Button {
+                                let gen = UIImpactFeedbackGenerator(style: .light)
+                                gen.impactOccurred()
+                                pendingDelete = entry
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.red)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.red.opacity(0.12), in: .circle)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(14)
                     }
-                    .padding(14)
                 }
-                .swipeActions {
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button {
+                        editingEntry = entry
+                    } label: { Label("Edit", systemImage: "pencil") }
                     Button(role: .destructive) {
-                        modelContext.delete(entry)
+                        pendingDelete = entry
                     } label: { Label("Delete", systemImage: "trash") }
                 }
             }
@@ -213,12 +265,14 @@ struct WaterBubbleButton: View {
 }
 
 struct ManualWaterLogSheet: View {
+    let existing: WaterEntry?
     let onSave: (Double, Date) -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var unit: WaterUnit = .oz
     @State private var amountText: String = "8"
     @State private var date: Date = Date()
+    @State private var didInit: Bool = false
 
     enum WaterUnit: String, CaseIterable, Identifiable {
         case oz = "oz"
@@ -285,8 +339,18 @@ struct ManualWaterLogSheet: View {
                     Text("Quick fill")
                 }
             }
-            .navigationTitle("Log Water")
+            .navigationTitle(existing == nil ? "Log Water" : "Edit Entry")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                guard !didInit else { return }
+                didInit = true
+                if let existing {
+                    unit = .ml
+                    let ml = existing.amountMl
+                    amountText = ml.truncatingRemainder(dividingBy: 1) == 0 ? "\(Int(ml))" : String(format: "%.0f", ml)
+                    date = existing.createdAt
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
