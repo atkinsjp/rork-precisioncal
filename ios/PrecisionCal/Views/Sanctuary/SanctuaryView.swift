@@ -135,9 +135,39 @@ struct SanctuaryView: View {
                 .foregroundStyle(PrecisionCalTheme.textSecondary)
                 .lineSpacing(2)
                 .padding(.top, 2)
+            disclaimerBanner
+                .padding(.top, 10)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.bottom, 6)
+    }
+
+    private var disclaimerBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(PrecisionCalTheme.terracotta)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Educational community — not medical advice.")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(PrecisionCalTheme.textPrimary)
+                Text("Posts reflect personal experience, not clinical guidance. Tap the flag on any post to report inappropriate content to support@atkins-media.com.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(PrecisionCalTheme.textSecondary)
+                    .lineSpacing(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(PrecisionCalTheme.terracotta.opacity(0.07))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(PrecisionCalTheme.terracotta.opacity(0.22), lineWidth: 0.8)
+                )
+        }
     }
 
     private var emptyState: some View {

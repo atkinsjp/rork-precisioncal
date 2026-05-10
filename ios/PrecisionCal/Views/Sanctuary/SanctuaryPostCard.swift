@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Vellum card (#FDFBF7) used for every Sanctuary post.
 struct SanctuaryPostCard: View {
@@ -7,9 +8,12 @@ struct SanctuaryPostCard: View {
     var onComment: () -> Void = {}
     var onReport: () -> Void = {}
 
+    @Environment(\.openURL) private var openURL
     @State private var heartPulse: Bool = false
     @State private var revealed: Bool = false
     @State private var showReportConfirm: Bool = false
+
+    private let supportEmail = "support@atkins-media.com"
 
     private var vellum: Color { Color(red: 0xFD/255, green: 0xFB/255, blue: 0xF7/255) }
 
@@ -368,16 +372,18 @@ struct SanctuaryPostCard: View {
             .buttonStyle(.plain)
             .disabled(post.userReported)
             .confirmationDialog(
-                "Report this post to the Steward?",
+                "Flag this post?",
                 isPresented: $showReportConfirm,
                 titleVisibility: .visible
             ) {
-                Button("Disrespectful", role: .destructive) { onReport() }
-                Button("Medically dangerous", role: .destructive) { onReport() }
-                Button("Improper / spam", role: .destructive) { onReport() }
+                Button("Disrespectful", role: .destructive) { flag(reason: "Disrespectful") }
+                Button("Medically dangerous", role: .destructive) { flag(reason: "Medically dangerous") }
+                Button("Improper / spam", role: .destructive) { flag(reason: "Improper or spam") }
+                Button("Sexual / hateful", role: .destructive) { flag(reason: "Sexual or hateful content") }
+                Button("Other", role: .destructive) { flag(reason: "Other") }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("The post will be hidden from the feed and routed to the Steward's Review Queue.")
+                Text("The post will be hidden from the feed, routed to the Steward, and a report will be emailed to \(supportEmail).")
             }
 
             Spacer()
@@ -400,5 +406,38 @@ struct SanctuaryPostCard: View {
         .foregroundStyle(color)
         .padding(.horizontal, 8).padding(.vertical, 4)
         .background(Capsule().fill(color.opacity(0.10)))
+    }
+
+    // MARK: - Flag flow
+
+    private func flag(reason: String) {
+        onReport()
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        sendReportEmail(reason: reason)
+    }
+
+    private func sendReportEmail(reason: String) {
+        let subject = "Sanctuary post report — \(reason)"
+        let preview = post.bodyText.isEmpty ? "(no body text)" : String(post.bodyText.prefix(400))
+        let bodyText = """
+        A community member has flagged a Sanctuary post.
+
+        Reason: \(reason)
+        Post kind: \(post.kind.rawValue)
+        Author (display): \(post.authorName)
+        Posted: \(post.createdAt)
+
+        Post excerpt:
+        \(preview)
+
+        —
+        Sent from PrecisionCal in-app report flow.
+        """
+        let allowed = CharacterSet.urlQueryAllowed
+        let s = subject.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+        let b = bodyText.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""
+        if let url = URL(string: "mailto:\(supportEmail)?subject=\(s)&body=\(b)") {
+            openURL(url)
+        }
     }
 }

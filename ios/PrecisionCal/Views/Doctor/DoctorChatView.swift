@@ -297,10 +297,17 @@ struct DoctorChatView: View {
             .padding(.top, 10)
             .padding(.bottom, 8)
 
-            Text("Educational guidance, not a substitute for medical care.")
-                .font(.system(size: 10))
-                .foregroundStyle(PrecisionCalTheme.textTertiary)
-                .padding(.bottom, 6)
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "info.circle.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(PrecisionCalTheme.textTertiary)
+                Text("Educational information with cited sources — not medical advice. Always consult a licensed healthcare professional.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(PrecisionCalTheme.textTertiary)
+                    .multilineTextAlignment(.leading)
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 8)
         }
         .background {
             Rectangle()
@@ -452,25 +459,121 @@ private struct ChatBubble: View {
                         .foregroundStyle(.white)
                 }
 
-                Text(message.content)
-                    .font(.system(size: 15))
-                    .foregroundStyle(PrecisionCalTheme.textPrimary)
-                    .lineSpacing(3)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .background {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color(red: 0xFD/255, green: 0xFB/255, blue: 0xF7/255))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(PrecisionCalTheme.glassStroke.opacity(0.6), lineWidth: 1)
-                            )
-                            .shadow(color: PrecisionCalTheme.terracotta.opacity(0.05), radius: 6, x: 0, y: 3)
-                    }
+                doctorBubbleContent(parse(message.content))
                 Spacer(minLength: 24)
             }
         }
+    }
+
+    private struct ParsedReply {
+        let body: String
+        let sources: [String]
+        let disclaimer: String?
+    }
+
+    private func parse(_ raw: String) -> ParsedReply {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Pull off trailing disclaimer line if present.
+        var working = trimmed
+        var disclaimer: String? = nil
+        let lines = working.split(separator: "\n", omittingEmptySubsequences: false).map { String($0) }
+        if let last = lines.last(where: { !$0.trimmingCharacters(in: .whitespaces).isEmpty }),
+           last.lowercased().contains("educational") && last.lowercased().contains("not medical advice") {
+            disclaimer = last.trimmingCharacters(in: .whitespaces)
+            if let range = working.range(of: last, options: .backwards) {
+                working = String(working[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        // Split off Sources: section.
+        var sources: [String] = []
+        if let srcRange = working.range(of: "Sources:", options: [.caseInsensitive, .backwards]) {
+            let srcBlock = working[srcRange.upperBound...]
+            sources = srcBlock
+                .split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            working = String(working[..<srcRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return ParsedReply(body: working, sources: sources, disclaimer: disclaimer)
+    }
+
+    @ViewBuilder
+    private func doctorBubbleContent(_ parsed: ParsedReply) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(highlightCitations(parsed.body))
+                .font(.system(size: 15))
+                .foregroundStyle(PrecisionCalTheme.textPrimary)
+                .lineSpacing(3)
+                .textSelection(.enabled)
+            if !parsed.sources.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "book.closed.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("SOURCES")
+                            .font(.system(size: 9, weight: .bold))
+                            .tracking(1.4)
+                    }
+                    .foregroundStyle(PrecisionCalTheme.terracotta)
+                    ForEach(parsed.sources, id: \.self) { src in
+                        Text(src)
+                            .font(.system(size: 11))
+                            .foregroundStyle(PrecisionCalTheme.textSecondary)
+                            .lineSpacing(1)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(PrecisionCalTheme.terracotta.opacity(0.06))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(PrecisionCalTheme.terracotta.opacity(0.18), lineWidth: 0.8)
+                        )
+                }
+            }
+            if let disclaimer = parsed.disclaimer {
+                HStack(alignment: .top, spacing: 5) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(PrecisionCalTheme.textTertiary)
+                        .padding(.top, 1)
+                    Text(disclaimer)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(PrecisionCalTheme.textTertiary)
+                        .italic()
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .background {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(red: 0xFD/255, green: 0xFB/255, blue: 0xF7/255))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(PrecisionCalTheme.glassStroke.opacity(0.6), lineWidth: 1)
+                )
+                .shadow(color: PrecisionCalTheme.terracotta.opacity(0.05), radius: 6, x: 0, y: 3)
+        }
+    }
+
+    private func highlightCitations(_ text: String) -> AttributedString {
+        var attr = AttributedString(text)
+        guard let regex = try? NSRegularExpression(pattern: "\\[(\\d+)\\]") else { return attr }
+        let ns = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        for match in matches.reversed() {
+            let token = ns.substring(with: match.range)
+            if let range = attr.range(of: token, options: .backwards) {
+                attr[range].font = .system(size: 11, weight: .bold).monospacedDigit()
+                attr[range].foregroundColor = PrecisionCalTheme.terracotta
+                attr[range].baselineOffset = 3
+            }
+        }
+        return attr
     }
 }
 

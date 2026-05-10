@@ -16,6 +16,8 @@ struct ProfileView: View {
 
     private let privacyURL = URL(string: "https://precisioncal.app/privacy.html")!
     private let termsURL = URL(string: "https://precisioncal.app/terms.html")!
+    private let supportURL = URL(string: "mailto:support@atkins-media.com")!
+    @State private var showDisclaimer: Bool = false
 
     private var profile: UserProfile? { profiles.first }
 
@@ -38,6 +40,8 @@ struct ProfileView: View {
                     subscriptionCard
 
                     calibrationCard
+
+                    disclaimerCard
 
                     legalCard
 
@@ -67,7 +71,45 @@ struct ProfileView: View {
             .fullScreenCover(isPresented: $showPaywall) {
                 PaywallView(store: store)
             }
+            .sheet(isPresented: $showDisclaimer) {
+                DisclaimerSheet()
+            }
         }
+    }
+
+    private var disclaimerCard: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            showDisclaimer = true
+        } label: {
+            GlassCard(cornerRadius: 18) {
+                HStack(spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .fill(PrecisionCalTheme.terracotta.opacity(0.14))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "exclamationmark.shield.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(PrecisionCalTheme.terracotta)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Medical Disclaimer")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(PrecisionCalTheme.textPrimary)
+                        Text("Educational use only — not a substitute for medical care.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(PrecisionCalTheme.textSecondary)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(PrecisionCalTheme.textTertiary)
+                }
+                .padding(18)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     private var subscriptionCard: some View {
@@ -303,6 +345,8 @@ struct ProfileView: View {
                 legalRow(icon: "hand.raised.fill", label: "Privacy Policy", url: privacyURL)
                 Divider().padding(.leading, 56).opacity(0.5)
                 legalRow(icon: "doc.text.fill", label: "Terms of Service", url: termsURL)
+                Divider().padding(.leading, 56).opacity(0.5)
+                legalRow(icon: "envelope.fill", label: "Contact Support", url: supportURL)
             }
             .padding(.vertical, 4)
         }

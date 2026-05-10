@@ -25,7 +25,7 @@ struct OnboardingFlow: View {
     @State private var healthProtocol: String = ""
 
     private enum Stage {
-        case vision, calibration, hydration, goals, activity, medical, conditions, allergies, medication, synthesis
+        case disclaimer, vision, calibration, hydration, goals, activity, medical, conditions, allergies, medication, synthesis
     }
 
     private var hasMedicalConditions: Bool {
@@ -33,7 +33,7 @@ struct OnboardingFlow: View {
     }
 
     private var stages: [Stage] {
-        var s: [Stage] = [.vision, .calibration, .hydration, .goals, .activity, .medical]
+        var s: [Stage] = [.disclaimer, .vision, .calibration, .hydration, .goals, .activity, .medical]
         if hasMedicalConditions { s.append(.conditions) }
         s.append(contentsOf: [.allergies, .medication, .synthesis])
         return s
@@ -59,6 +59,8 @@ struct OnboardingFlow: View {
     @ViewBuilder
     private func screen(for stage: Stage) -> some View {
         switch stage {
+        case .disclaimer:
+            DisclaimerScreen(onAccept: { advance() })
         case .vision:
             VisionScreen(onContinue: { advance() })
         case .calibration:
