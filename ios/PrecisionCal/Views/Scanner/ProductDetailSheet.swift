@@ -1,10 +1,15 @@
 import SwiftUI
+import SwiftData
 
 struct ProductDetailSheet: View {
     let product: ScannedProduct
     let profile: UserProfile?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var showLogSheet: Bool = false
+    @State private var loggedConfirmation: Bool = false
 
     private var allergyHits: [String] {
         guard let profile, !profile.allergies.isEmpty else { return [] }
@@ -46,12 +51,37 @@ struct ProductDetailSheet: View {
                     additiveRiskCard
                     if !product.clinicalNote.isEmpty { clinicalCard }
                     if !product.ingredients.isEmpty { ingredientsCard }
+                    logButton
                     Spacer(minLength: 40)
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 12)
             }
             .scrollIndicators(.hidden)
+        }
+        .sheet(isPresented: $showLogSheet) {
+            LogPantryItemSheet(product: product) { servings in
+                logAsEaten(servings: servings)
+            }
+            .presentationDetents([.medium])
+            .presentationBackground(.regularMaterial)
+        }
+        .overlay(alignment: .top) {
+            if loggedConfirmation {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(PrecisionCalTheme.sage)
+                    Text("Logged to today's nutrition")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(PrecisionCalTheme.textPrimary)
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 16)
+                .background(.ultraThinMaterial, in: .capsule)
+                .overlay(Capsule().stroke(PrecisionCalTheme.glassStroke, lineWidth: 1))
+                .padding(.top, 14)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
         .overlay(alignment: .topTrailing) {
             Button { dismiss() } label: {
@@ -64,6 +94,80 @@ struct ProductDetailSheet: View {
             }
             .padding(.top, 14)
             .padding(.trailing, 18)
+        }
+    }
+
+    // MARK: - Actions
+
+    private var logButton: some View {
+        Button {
+            let gen = UIImpactFeedbackGenerator(style: .medium)
+            gen.impactOccurred()
+            showLogSheet = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "fork.knife")
+                    .font(.system(size: 15, weight: .semibold))
+                Text("Log as eaten")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(PrecisionCalTheme.terracotta)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
+    }
+
+    private func logAsEaten(servings: Double) {
+        let meal = Meal(
+            createdAt: Date(),
+            title: product.name.isEmpty ? "Pantry item" : product.name,
+            status: "complete",
+            totalCalories: product.calories * servings,
+            totalProtein: product.protein * servings,
+            totalCarbs: product.carbs * servings,
+            totalFat: product.fat * servings,
+            totalFiber: product.fiber * servings,
+            totalSugar: product.sugar * servings,
+            waterContentMl: 0,
+            mealScore: 0,
+            metabolicImpact: "",
+            qcNotes: "Logged from pantry — \(product.brand.isEmpty ? product.name : product.brand)"
+        )
+        let item = MealItem(
+            name: product.name.isEmpty ? "Pantry item" : product.name,
+            preparation: product.servingDescription,
+            grams: product.servingSizeG * servings,
+            calories: product.calories * servings,
+            protein: product.protein * servings,
+            carbs: product.carbs * servings,
+            fat: product.fat * servings,
+            fiber: product.fiber * servings,
+            sugar: product.sugar * servings,
+            waterMl: 0
+        )
+        meal.items = [item]
+        modelContext.insert(meal)
+        try? modelContext.save()
+
+        let gen = UINotificationFeedbackGenerator()
+        gen.notificationOccurred(.success)
+
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            loggedConfirmation = true
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.6))
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                loggedConfirmation = false
+            }
+            try? await Task.sleep(for: .seconds(0.3))
+            dismiss()
         }
     }
 
@@ -286,3 +390,136 @@ struct ProductDetailSheet: View {
     }
 }
 
+// MARK: - Log sheet
+
+private struct LogPantryItemSheet: View {
+    let product: ScannedProduct
+    let onConfirm: (Double) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var servings: Double = 1.0
+
+    private let presets: [Double] = [0.5, 1.0, 1.5, 2.0]
+
+    private var scaledCalories: Int { Int((product.calories * servings).rounded()) }
+    private var scaledProtein: Int { Int((product.protein * servings).rounded()) }
+    private var scaledCarbs: Int { Int((product.carbs * servings).rounded()) }
+    private var scaledFat: Int { Int((product.fat * servings).rounded()) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("LOG AS EATEN")
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(2)
+                    .foregroundStyle(PrecisionCalTheme.textTertiary)
+                Text(product.name.isEmpty ? "Pantry item" : product.name)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(PrecisionCalTheme.textPrimary)
+                    .lineLimit(2)
+                if !product.servingDescription.isEmpty {
+                    Text("1 serving = \(product.servingDescription)")
+                        .font(.system(size: 12))
+                        .foregroundStyle(PrecisionCalTheme.textSecondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Servings")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(PrecisionCalTheme.textSecondary)
+                HStack(spacing: 8) {
+                    ForEach(presets, id: \.self) { p in
+                        let isOn = abs(servings - p) < 0.001
+                        Button {
+                            let gen = UISelectionFeedbackGenerator()
+                            gen.selectionChanged()
+                            servings = p
+                        } label: {
+                            Text(servingLabel(p))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(isOn ? .white : PrecisionCalTheme.textPrimary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(isOn ? PrecisionCalTheme.terracotta : Color.white.opacity(0.5))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                                .stroke(PrecisionCalTheme.glassStroke, lineWidth: 1)
+                                        )
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Stepper(value: $servings, in: 0.25...10, step: 0.25) {
+                    Text("Custom: \(servingLabel(servings))")
+                        .font(.system(size: 13))
+                        .foregroundStyle(PrecisionCalTheme.textSecondary)
+                }
+                .tint(PrecisionCalTheme.terracotta)
+            }
+
+            HStack(spacing: 0) {
+                logStat(value: "\(scaledCalories)", label: "cal", color: PrecisionCalTheme.textPrimary)
+                Divider().frame(height: 30).background(PrecisionCalTheme.glassStroke)
+                logStat(value: "\(scaledProtein)g", label: "protein", color: PrecisionCalTheme.proteinColor)
+                Divider().frame(height: 30).background(PrecisionCalTheme.glassStroke)
+                logStat(value: "\(scaledCarbs)g", label: "carbs", color: PrecisionCalTheme.carbColor)
+                Divider().frame(height: 30).background(PrecisionCalTheme.glassStroke)
+                logStat(value: "\(scaledFat)g", label: "fat", color: PrecisionCalTheme.fatColor)
+            }
+            .padding(.vertical, 12)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(PrecisionCalTheme.glassStroke, lineWidth: 1)
+                    )
+            }
+
+            Button {
+                onConfirm(servings)
+                dismiss()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("Add to today")
+                        .font(.system(size: 16, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(PrecisionCalTheme.terracotta)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 22)
+        .padding(.top, 22)
+    }
+
+    private func servingLabel(_ v: Double) -> String {
+        if abs(v.rounded() - v) < 0.01 { return "\(Int(v))x" }
+        return String(format: "%.2fx", v)
+    }
+
+    private func logStat(value: String, label: String, color: Color) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(PrecisionCalTheme.textTertiary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
