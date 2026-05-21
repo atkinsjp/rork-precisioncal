@@ -1,5 +1,7 @@
 import SwiftUI
 import SwiftData
+import StoreKit
+import UIKit
 
 struct ProfileView: View {
     @Environment(\.modelContext) private var modelContext
@@ -17,6 +19,10 @@ struct ProfileView: View {
     private let supportURL = URL(string: "mailto:support@atkins-media.com")!
     @State private var showDisclaimer: Bool = false
     @State private var legalSheet: LegalDocumentView.Kind? = nil
+    @State private var showSignOutConfirm: Bool = false
+    @State private var showDeleteConfirm: Bool = false
+    @State private var isDeletingAccount: Bool = false
+    @State private var manageSubError: String? = nil
 
     private var profile: UserProfile? { profiles.first }
 
@@ -45,6 +51,8 @@ struct ProfileView: View {
                     legalCard
 
                     ownerModeCard
+
+                    accountCard
 
                     resetCard
 
@@ -76,7 +84,169 @@ struct ProfileView: View {
             .sheet(item: $legalSheet) { kind in
                 LegalDocumentView(kind: kind)
             }
+            .alert("Sign out?", isPresented: $showSignOutConfirm) {
+                Button("Cancel", role: .cancel) { }
+                Button("Sign Out", role: .destructive) { signOut() }
+            } message: {
+                Text("You'll be signed out of Apple ID on this device. Your local data stays until you delete your account.")
+            }
+            .alert("Delete account?", isPresented: $showDeleteConfirm) {
+                Button("Cancel", role: .cancel) { }
+                Button("Delete Everything", role: .destructive) { deleteAccount() }
+            } message: {
+                Text("This permanently erases your profile, meals, scans, calibrations, sanctuary posts, and all local data on this device. This cannot be undone. Active subscriptions are managed by Apple and must be cancelled separately.")
+            }
+            .alert("Couldn't open Subscriptions", isPresented: Binding(get: { manageSubError != nil }, set: { if !$0 { manageSubError = nil } })) {
+                Button("OK", role: .cancel) { manageSubError = nil }
+            } message: {
+                Text(manageSubError ?? "")
+            }
         }
+    }
+
+    private var accountCard: some View {
+        GlassCard(cornerRadius: 18) {
+            VStack(spacing: 0) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    Task { await openManageSubscriptions() }
+                } label: {
+                    accountRowLabel(
+                        icon: "creditcard.fill",
+                        label: "Manage Subscription",
+                        sublabel: store.isPremium ? "Change plan or cancel" : "View available plans",
+                        tint: PrecisionCalTheme.terracotta,
+                        trailing: "arrow.up.right"
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Divider().padding(.leading, 56).opacity(0.5)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    showSignOutConfirm = true
+                } label: {
+                    accountRowLabel(
+                        icon: "rectangle.portrait.and.arrow.right",
+                        label: "Sign Out",
+                        sublabel: ownerAuth.savedAppleUserEmail ?? "Clear Apple ID session",
+                        tint: PrecisionCalTheme.textPrimary,
+                        trailing: "chevron.right"
+                    )
+                }
+                .buttonStyle(.plain)
+
+                Divider().padding(.leading, 56).opacity(0.5)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                    showDeleteConfirm = true
+                } label: {
+                    accountRowLabel(
+                        icon: "trash.fill",
+                        label: isDeletingAccount ? "Deleting…" : "Delete Account",
+                        sublabel: "Permanently erase all data on this device",
+                        tint: .red,
+                        trailing: "chevron.right"
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(isDeletingAccount)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func accountRowLabel(icon: String, label: String, sublabel: String, tint: Color, trailing: String) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(tint.opacity(0.14))
+                    .frame(width: 32, height: 32)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(tint)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(tint == .red ? Color.red : PrecisionCalTheme.textPrimary)
+                Text(sublabel)
+                    .font(.system(size: 12))
+                    .foregroundStyle(PrecisionCalTheme.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Image(systemName: trailing)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(PrecisionCalTheme.textTertiary)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+    }
+
+    @MainActor
+    private func openManageSubscriptions() async {
+        if let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }) ?? UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first {
+            do {
+                try await AppStore.showManageSubscriptions(in: scene)
+                return
+            } catch {
+                // Fall through to URL fallback
+            }
+        }
+        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+            await UIApplication.shared.open(url)
+        } else {
+            manageSubError = "Open Settings → Apple ID → Subscriptions to manage your plan."
+        }
+    }
+
+    private func signOut() {
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        ownerAuth.signOut()
+    }
+
+    private func deleteAccount() {
+        guard !isDeletingAccount else { return }
+        isDeletingAccount = true
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+
+        // Wipe every SwiftData model we manage.
+        let modelTypes: [any PersistentModel.Type] = [
+            Meal.self,
+            MealItem.self,
+            WaterEntry.self,
+            UserProfile.self,
+            ScannedProduct.self,
+            Calibration.self,
+            SanctuaryPost.self,
+            SanctuaryComment.self,
+            RoadmapInsight.self,
+            BodyWeightEntry.self,
+            ShoppingItem.self,
+        ]
+        for type in modelTypes {
+            try? modelContext.delete(model: type)
+        }
+        try? modelContext.save()
+
+        // Clear Apple ID + owner override.
+        ownerAuth.signOut()
+
+        // Wipe every persisted preference for the app's bundle.
+        if let bundleID = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleID)
+        }
+        UserDefaults.standard.synchronize()
+
+        // Bounce user back to onboarding.
+        hasOnboarded = false
+        isDeletingAccount = false
     }
 
     private var disclaimerCard: some View {

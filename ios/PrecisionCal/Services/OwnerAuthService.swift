@@ -32,6 +32,14 @@ final class OwnerAuthService: NSObject {
         super.init()
     }
 
+    /// Clear the saved Apple ID session and disable owner override.
+    func signOut() {
+        UserDefaults.standard.removeObject(forKey: Self.appleUserIDKey)
+        UserDefaults.standard.removeObject(forKey: Self.appleUserEmailKey)
+        store.setOwnerOverride(false)
+        lastError = nil
+    }
+
     var savedAppleUserID: String? {
         UserDefaults.standard.string(forKey: Self.appleUserIDKey)
     }
