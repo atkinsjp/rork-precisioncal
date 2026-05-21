@@ -334,7 +334,7 @@ struct DashboardView: View {
             HStack(spacing: 6) {
                 Image(systemName: drawerOpen ? "chevron.down" : "chevron.up")
                     .font(.system(size: 11, weight: .bold))
-                Text(drawerOpen ? "Hide PhD breakdown" : "Swipe up for PhD breakdown")
+                Text(drawerOpen ? "Hide deep breakdown" : "Swipe up for deep breakdown")
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(1.5)
             }

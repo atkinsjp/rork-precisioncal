@@ -78,7 +78,7 @@ struct SanctuaryComposerView: View {
             HStack(spacing: 10) {
                 kindButton(.encouragement, "Voice", "quote.bubble.fill")
                 kindButton(.bloom, "Bloom", "circle.hexagongrid.fill")
-                kindButton(.mealAnalysis, "PhD Meal", "leaf.fill")
+                kindButton(.mealAnalysis, "Meal Scan", "leaf.fill")
             }
         }
     }

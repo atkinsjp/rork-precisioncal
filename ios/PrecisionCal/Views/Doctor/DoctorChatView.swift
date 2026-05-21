@@ -400,7 +400,7 @@ struct DoctorChatView: View {
                     )
                 )
                 .frame(width: size, height: size)
-            Image(systemName: "stethoscope")
+            Image(systemName: "leaf.fill")
                 .font(.system(size: size * 0.45, weight: .semibold))
                 .foregroundStyle(.white)
         }
@@ -454,7 +454,7 @@ private struct ChatBubble: View {
                             )
                         )
                         .frame(width: 30, height: 30)
-                    Image(systemName: "stethoscope")
+                    Image(systemName: "leaf.fill")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white)
                 }

@@ -360,6 +360,8 @@ nonisolated final class AIService: Sendable {
         ]
         let raw = try await postChat(body: body)
         var cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Defensive scrub: strip any clinical title the model may still emit.
+        cleaned = Self.stripClinicalTitles(from: cleaned)
         // Guarantee the per-reply educational disclaimer is present, even if the model omits it.
         let disclaimer = "Educational nutrition information only — not medical or official nutrition advice. Consult a licensed healthcare professional."
         let lowered = cleaned.lowercased()
@@ -367,6 +369,29 @@ nonisolated final class AIService: Sendable {
             cleaned += "\n\n" + disclaimer
         }
         return cleaned
+    }
+
+    /// Remove any clinical self-identification the model may emit
+    /// (e.g. "Dr. PrecisionCal", "Dr. Cal", "Cal, PhD", "PhD Nutritionist").
+    nonisolated static func stripClinicalTitles(from text: String) -> String {
+        var out = text
+        let patterns: [(String, String)] = [
+            ("Dr\\.?\\s*PrecisionCal", "Cal"),
+            ("Dr\\.?\\s*Precision\\s*Cal", "Cal"),
+            ("Dr\\.?\\s*Cal\\b", "Cal"),
+            ("\\bCal,\\s*Ph\\.?D\\.?", "Cal"),
+            ("\\bCal\\s+Ph\\.?D\\.?", "Cal"),
+            ("\\bPh\\.?D\\.?\\s+Nutritionist\\b", "nutrition guide"),
+            ("\\bPh\\.?D\\.?\\s+Clinical\\s+Nutritionist\\b", "nutrition guide"),
+            ("\\bPh\\.?D\\.?\\s+Dietitian\\b", "nutrition guide"),
+        ]
+        for (pattern, replacement) in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) {
+                let range = NSRange(out.startIndex..., in: out)
+                out = regex.stringByReplacingMatches(in: out, options: [], range: range, withTemplate: replacement)
+            }
+        }
+        return out
     }
 
     // MARK: - 4-Pass Sequential Chain

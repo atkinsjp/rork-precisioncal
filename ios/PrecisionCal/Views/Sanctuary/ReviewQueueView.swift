@@ -404,7 +404,7 @@ private struct FlaggedPostRow: View {
     private var kindLabel: String {
         switch post.kind {
         case .bloom: "Vitality Bloom"
-        case .mealAnalysis: "PhD Meal Analysis"
+        case .mealAnalysis: "Meal Analysis"
         case .encouragement: "Encouragement"
         }
     }
