@@ -377,26 +377,56 @@ nonisolated final class AIService: Sendable {
     ) async throws -> MealAnalysisResult {
         let base64 = try resizeForUpload(imageData: imageData, maxBytes: 1_400_000)
 
-        // Pass 1 — Vision: identify items
-        let p1 = try await runPass1(base64: base64)
-        guard !p1.items.isEmpty else { throw AIError.visionFailed }
+        // Pass 1 — Vision: identify items. If this fails entirely, fall back to single-shot.
+        let p1: Pass1Output
+        do {
+            p1 = try await runPass1(base64: base64)
+        } catch {
+            print("[AIService] Pass1 failed (\(error)) — falling back to single-shot analysis.")
+            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+        }
+        guard !p1.items.isEmpty else {
+            print("[AIService] Pass1 returned no items — falling back to single-shot analysis.")
+            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+        }
         let title = (p1.title?.isEmpty == false ? p1.title! : defaultTitle(from: p1.items))
         onProgress(.pass1Identified(items: p1.items.map { $0.name }, title: title))
 
-        // Pass 2 — Vision: dimensional weight estimation
-        let p2 = try await runPass2(base64: base64, p1: p1)
+        // Pass 2 — Vision: dimensional weight estimation. Fall back if it fails.
+        let p2: Pass2Output
+        do {
+            p2 = try await runPass2(base64: base64, p1: p1)
+        } catch {
+            print("[AIService] Pass2 failed (\(error)) — falling back to single-shot.")
+            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+        }
         onProgress(.pass2Weighed)
 
         // Pass 3 — Text-only USDA mapping
-        let p3 = try await runPass3(p1: p1, p2: p2)
+        let p3: Pass3Output
+        do {
+            p3 = try await runPass3(p1: p1, p2: p2)
+        } catch {
+            print("[AIService] Pass3 failed (\(error)) — falling back to single-shot.")
+            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+        }
         onProgress(.pass3Mapped)
 
         // Pass 4 — Text-only QC + synthesis
-        let p4 = try await runPass4(p1: p1, p3: p3)
-        guard !p4.items.isEmpty else { throw AIError.visionFailed }
+        let p4: Pass4Output
+        do {
+            p4 = try await runPass4(p1: p1, p3: p3)
+        } catch {
+            print("[AIService] Pass4 failed (\(error)) — falling back to single-shot.")
+            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+        }
+        guard !p4.items.isEmpty else {
+            print("[AIService] Pass4 returned no items — falling back to single-shot.")
+            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+        }
         onProgress(.pass4Synthesized)
 
-        // Pass 5 — Vision: magnified lipid-sheen detection per food item
+        // Pass 5 — Vision: magnified lipid-sheen detection per food item (optional)
         let p5 = (try? await runPass5(base64: base64, p4: p4)) ?? Pass5Output(adjustments: [], summaryNote: nil)
 
         let finalTitle = (p4.title?.isEmpty == false ? p4.title! : title)
@@ -433,6 +463,21 @@ nonisolated final class AIService: Sendable {
             lipidSheenDetected: sheenDetected,
             lipidNote: p5.summaryNote ?? ""
         )
+        onProgress(.pass5LipidScanned(result))
+        return result
+    }
+
+    /// Fallback: ask the model to produce the full report in one shot. Used when the 5-pass chain fails.
+    private func singleShotFallback(
+        base64: String,
+        onProgress: @escaping @Sendable (AnalysisEvent) -> Void
+    ) async throws -> MealAnalysisResult {
+        let result = try await runFullAnalysis(base64: base64) { items, title in
+            onProgress(.pass1Identified(items: items, title: title))
+        }
+        onProgress(.pass2Weighed)
+        onProgress(.pass3Mapped)
+        onProgress(.pass4Synthesized)
         onProgress(.pass5LipidScanned(result))
         return result
     }
