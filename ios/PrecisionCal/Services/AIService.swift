@@ -520,10 +520,10 @@ nonisolated final class AIService: Sendable {
     ) async throws -> MealAnalysisResult {
         let system = """
         You are PrecisionCal, a senior nutritionist with computer-vision expertise. Analyze the meal photo end-to-end:
-        1. Identify each food item, its preparation method, and visual cues.
+        1. EXHAUSTIVELY identify every distinct food item, side, vegetable, starch, sauce, dip, garnish, and condiment visible. Do NOT collapse sides into the main dish. Typical plates have 3–6 items; if you only see one, look again for missed carbs/vegetables/sauces.
         2. Estimate gram weights from plate size and depth cues. Use density constants (g/cm^3): chicken 1.05, beef 1.05, fish 1.0, rice 0.85, pasta 1.10, bread 0.30, oil 0.92, butter 0.91, leafy veg 0.30, root veg 0.65, beans 1.20, cheese 1.10, fruit 0.85.
-        3. Map weights to USDA FoodData Central nutrition. Account for prep (frying adds oil; grilling does not).
-        4. QC: kcal/g should be 0.5 to 6 for most foods, 9 for pure oil, 0.2 to 0.4 for leafy veg. Reconcile macros (4/4/9 kcal per g). Adjust water for cooking method.
+        3. Map weights to USDA FoodData Central nutrition. Account for prep (frying adds oil; grilling does not). Fiber and sugar MUST be non-zero for plant foods (carrots ~2.8g fiber/100g, potatoes ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, BBQ sauce ~25g sugar/100g, fruit ~2–10g sugar/100g). Returning 0 fiber and 0 sugar on a meal with vegetables/starch/fruit/sauce is a BUG.
+        4. QC: kcal/g should be 0.5 to 6 for most foods, 9 for pure oil, 0.2 to 0.4 for leafy veg. Reconcile macros (4/4/9 kcal per g). Adjust water for cooking method. Cooked chicken breast is ~31g protein/100g — do not over-attribute protein.
         Score the meal 0 to 100 on protein adequacy, fiber, sugar load, prep, and balance.
         metabolicImpact must be ONE short label like "Steady energy", "Quick spike", "Slow burn", "Recovery boost", or "Light & lean".
         qcNotes is ONE concise sentence.
@@ -587,16 +587,28 @@ nonisolated final class AIService: Sendable {
 
     private func runPass1(base64: String) async throws -> Pass1Output {
         let system = """
-        You are PrecisionCal Pass 1 (Vision). Identify food items, preparation methods (oily/dry/grilled/fried/raw/steamed/baked), and plate dimensions from depth/shadow cues.
+        You are PrecisionCal Pass 1 (Vision). EXHAUSTIVELY enumerate EVERY distinct edible component visible on or beside the plate. Do not summarize, do not group, and do not skip items because they look minor.
+
+        MANDATORY COVERAGE — list each of the following as its OWN item whenever present:
+        - Every protein (chicken, beef, fish, tofu, egg, etc.) — separate cuts if visually distinct
+        - Every starch/carb (potato, rice, pasta, bread, tortilla, fries, wedges, grains, beans, corn)
+        - Every vegetable (carrots, broccoli, greens, peppers, onions, tomatoes, etc.) — list each TYPE separately
+        - Every fruit, including garnishes (lemon wedge, lime, berries, apple slices)
+        - Every sauce, dressing, dip, gravy, glaze, or condiment visible in a bowl or drizzled on food (estimate type: tomato-based, cream-based, vinaigrette, BBQ, etc.)
+        - Every dairy item (cheese, sour cream, yogurt, butter pat)
+        - Visible cooking fats (oil sheen, butter)
+        - Beverages if shown
+        Minimum expectation: typical restaurant plates have 3–6 distinct items. If you only see one, you are almost certainly missing sides — look again.
+
         Return STRICT JSON only:
-        {"title":"short meal name","items":[{"name":"...","preparation":"...","visual":"color/texture","category":"protein|carb|veg|fat|fruit|dairy|other"}],"plateDetails":"diameter cm + shape","depthCues":"shadow/portion notes"}
+        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|roasted|sauteed|other","visual":"color/texture","category":"protein|carb|veg|fat|fruit|dairy|sauce|other"}],"plateDetails":"diameter cm + shape","depthCues":"shadow/portion notes"}
         """
         let body: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": system],
                 ["role": "user", "content": [
-                    ["type": "text", "text": "Identify food items, prep, plate size, depth cues."],
+                    ["type": "text", "text": "Enumerate EVERY distinct food, side, sauce, garnish, and condiment on the plate. Do not skip carbs, vegetables, or sauces. Then report prep, plate size, and depth cues."],
                     ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
                 ]],
             ],
@@ -639,6 +651,13 @@ nonisolated final class AIService: Sendable {
         You are PrecisionCal Pass 3 (USDA Database). Map weights to USDA nutritional values per item.
         For each item compute: calories(kcal), protein(g), carbs(g), fat(g), fiber(g), sugar(g), waterMl.
         Use USDA FoodData Central reference values; account for the preparation method (frying adds oil; grilling does not).
+
+        FIBER & SUGAR RULES — DO NOT default to 0:
+        - Vegetables, fruits, beans, whole grains, nuts, seeds ALWAYS have measurable fiber. Examples per 100g cooked: carrots ~2.8g fiber / ~4.7g sugar; broccoli ~2.6g / ~1.4g; potato with skin ~2.2g / ~1.2g; sweet potato ~3.0g / ~6.0g; brown rice ~1.8g / ~0.4g; whole-wheat bread ~7g / ~5g; beans ~6–8g / ~0.3g; berries ~5–7g / ~5–10g; apple ~2.4g / ~10g; banana ~2.6g / ~12g; tomatoes ~1.2g / ~2.6g; leafy greens ~2g / ~0.5g.
+        - Sauces: BBQ ~0g fiber / ~15–40g sugar per 100g; ketchup ~0.4 / ~22; tomato sauce ~1.5 / ~6; vinaigrette ~0.1 / ~3; cream sauce ~0 / ~3.
+        - Dairy: milk ~0 / ~5; yogurt plain ~0 / ~3.6; cheese ~0 / ~0.5.
+        - Only return fiber=0 AND sugar=0 if the item is genuinely fiber/sugar-free (pure meat, pure oil/fat, pure egg white, pure broth). Plant foods returning 0 is a BUG.
+
         Items with weights: \(weightsJSON).
         Return STRICT JSON only:
         {"items":[{"name":"...","preparation":"...","grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"waterMl":number}]}
@@ -698,6 +717,8 @@ nonisolated final class AIService: Sendable {
         - kcal/g ratio: most foods 0.5–6 kcal/g; pure oils ~9; leafy veg ~0.2–0.4. Correct any outliers.
         - Protein/carb/fat grams must roughly reconcile with calories (4/4/9 kcal per g).
         - Adjust water content for cooking method (frying reduces water).
+        - FIBER/SUGAR AUDIT: any plant food (vegetable, fruit, whole grain, legume, nut, seed, sauce with produce) MUST have non-zero fiber and/or sugar consistent with USDA. If Pass 3 returned 0 for a plant item, CORRECT it using USDA values: carrots ~2.8g fiber/100g, potato ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, lemon ~2.8g/100g, BBQ sauce ~25g sugar/100g, etc. Returning 0 fiber on a meal that contains vegetables, fruit, or starch is INCORRECT — fix it.
+        - PROTEIN AUDIT: cooked chicken breast is ~31g protein per 100g. Do not over-attribute protein.
         Compute:
         - mealScore (0–100): protein adequacy, fiber, sugar load, prep method, balance.
         - metabolicImpact: ONE short label like "Steady energy", "Quick spike", "Slow burn", "Recovery boost", "Light & lean".
