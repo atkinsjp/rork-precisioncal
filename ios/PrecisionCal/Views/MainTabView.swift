@@ -11,15 +11,15 @@ struct MainTabView: View {
                 }
                 .tag(0)
 
-            AnalyticsView()
-                .tabItem {
-                    Label("Trends", systemImage: "chart.line.uptrend.xyaxis")
-                }
-                .tag(1)
-
             FrostedScannerView()
                 .tabItem {
                     Label("Scan", systemImage: "barcode.viewfinder")
+                }
+                .tag(1)
+
+            SanctuaryView()
+                .tabItem {
+                    Label("Community", systemImage: "leaf.fill")
                 }
                 .tag(2)
 

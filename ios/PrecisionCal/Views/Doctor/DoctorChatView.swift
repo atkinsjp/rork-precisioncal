@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-/// Conversational chat with Dr. PrecisionCal — a PhD-level nutritionist
+/// Conversational chat with Cal — a friendly nutrition guide (educational, not clinical)
 /// whose answers are personalized using the user's onboarding profile
 /// (goals, conditions, allergies, medications, activity).
 struct DoctorChatView: View {
@@ -119,14 +119,14 @@ struct DoctorChatView: View {
                     )
                     .frame(width: 46, height: 46)
                     .shadow(color: PrecisionCalTheme.terracotta.opacity(0.35), radius: 10, x: 0, y: 6)
-                Image(systemName: "stethoscope")
+                Image(systemName: "leaf.fill")
                     .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(.white)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text("Dr. PrecisionCal")
+                    Text("Cal")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(PrecisionCalTheme.textPrimary)
                     Image(systemName: "checkmark.seal.fill")
@@ -137,7 +137,7 @@ struct DoctorChatView: View {
                     Circle()
                         .fill(PrecisionCalTheme.sage)
                         .frame(width: 6, height: 6)
-                    Text("PhD Nutritionist • Online")
+                    Text("Nutrition Guide • Online")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(PrecisionCalTheme.textSecondary)
                 }
@@ -168,7 +168,7 @@ struct DoctorChatView: View {
                     Text("Welcome\(profile?.name.isEmpty == false ? ", \(profile!.name)" : "").")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(PrecisionCalTheme.textPrimary)
-                    Text("I'm Dr. PrecisionCal. I've reviewed your profile — your goals, conditions, allergies, and medications. Ask me anything about food, nutrients, or how meals affect your health.")
+                    Text("I'm Cal, your nutrition guide. I've reviewed your profile — your goals, conditions, allergies, and medications. Ask me anything about food, nutrients, or how meals affect your wellness. Educational info only — not medical advice.")
                         .font(.system(size: 14))
                         .foregroundStyle(PrecisionCalTheme.textPrimary)
                         .lineSpacing(3)
@@ -240,7 +240,7 @@ struct DoctorChatView: View {
 
             HStack(alignment: .bottom, spacing: 10) {
                 HStack(alignment: .bottom, spacing: 8) {
-                    TextField("Ask Dr. PrecisionCal…", text: $draft, axis: .vertical)
+                    TextField("Ask Cal…", text: $draft, axis: .vertical)
                         .font(.system(size: 15))
                         .foregroundStyle(PrecisionCalTheme.textPrimary)
                         .lineLimit(1...5)
@@ -357,7 +357,7 @@ struct DoctorChatView: View {
             } catch {
                 await MainActor.run {
                     sending = false
-                    showError("Couldn't reach Dr. PrecisionCal. Please try again.")
+                    showError("Couldn't reach Cal. Please try again.")
                 }
             }
         }

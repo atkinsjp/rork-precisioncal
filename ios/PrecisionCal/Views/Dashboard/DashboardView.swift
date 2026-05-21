@@ -17,9 +17,11 @@ struct DashboardView: View {
     @State private var fallbackIndex: Int = 0
     @State private var showMeals: Bool = false
     @State private var showWater: Bool = false
-    @State private var showSanctuary: Bool = false
     @State private var showShopping: Bool = false
+    @State private var showTrends: Bool = false
     @State private var showDoctorChat: Bool = false
+    @State private var showMealAnalysis: Bool = false
+    @AppStorage("hasUsedMealAnalysis") private var hasUsedMealAnalysis: Bool = false
 
     /// Curated complete focus directives, used for instant tap-to-cycle
     /// and as fallback when the AI returns a fragment.
@@ -150,6 +152,12 @@ struct DashboardView: View {
                     onTap: { cycleFocus() }
                 )
 
+                MealAnalysisCard {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    hasUsedMealAnalysis = true
+                    showMealAnalysis = true
+                }
+
                 AskDoctorCard {
                     UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                     showDoctorChat = true
@@ -214,11 +222,23 @@ struct DashboardView: View {
                     }
             }
         }
-        .sheet(isPresented: $showSanctuary) {
-            SanctuaryView()
+        .sheet(isPresented: $showMealAnalysis) {
+            NavigationStack { MealLogView() }
         }
         .sheet(isPresented: $showShopping) {
             ShoppingListView()
+        }
+        .sheet(isPresented: $showTrends) {
+            NavigationStack {
+                AnalyticsView()
+                    .navigationTitle("Trends")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showTrends = false }
+                        }
+                    }
+            }
         }
         .sheet(isPresented: $showDoctorChat) {
             DoctorChatView()
@@ -343,10 +363,10 @@ struct DashboardView: View {
             ) { showShopping = true }
 
             QuickActionTile(
-                title: "Sanctuary",
-                icon: "leaf.fill",
+                title: "Trends",
+                icon: "chart.line.uptrend.xyaxis",
                 color: PrecisionCalTheme.terracotta
-            ) { showSanctuary = true }
+            ) { showTrends = true }
         }
     }
 

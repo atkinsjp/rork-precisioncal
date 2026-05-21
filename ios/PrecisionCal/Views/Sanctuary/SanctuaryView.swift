@@ -60,10 +60,6 @@ struct SanctuaryView: View {
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { dismiss() }
-                        .foregroundStyle(PrecisionCalTheme.textSecondary)
-                }
                 ToolbarItem(placement: .principal) {
                     Text("THE SANCTUARY")
                         .font(.system(size: 11, weight: .bold))
