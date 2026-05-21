@@ -2,7 +2,7 @@
   "$schema": "https://rork.com/schema/rork.json",
   "apps": [
     {
-      "name": "PrecisionCal",
+      "name": "Precision Cal",
       "path": "ios",
       "framework": "swift"
     }
