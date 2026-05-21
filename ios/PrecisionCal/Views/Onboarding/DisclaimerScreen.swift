@@ -69,7 +69,7 @@ struct DisclaimerScreen: View {
     }
 
     private var bodyCopy: some View {
-        Text("All nutrition information, AI insights, meal analyses, and Dr. PrecisionCal chat replies are intended for general educational and informational purposes only. They are not a substitute for professional medical advice, diagnosis, or treatment.")
+        Text("All nutrition information, AI insights, meal analyses, and chats with Cal (our educational nutrition guide) are intended for general educational and informational purposes only. They are not official nutrition advice and are not a substitute for professional medical advice, diagnosis, or treatment.")
             .font(.system(size: 14))
             .foregroundStyle(PrecisionCalTheme.textPrimary)
             .lineSpacing(3)

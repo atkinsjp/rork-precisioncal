@@ -22,7 +22,7 @@ struct DisclaimerSheet: View {
 
                     section(
                         title: "Educational use only",
-                        body: "PrecisionCal is a wellness companion. All nutrition information, AI insights, meal analyses, scanned product reviews, weekly Sunday Calibrations, and Dr. PrecisionCal chat replies are intended for general educational and informational purposes only. They are not a substitute for professional medical advice, diagnosis, or treatment."
+                        body: "PrecisionCal is a wellness companion. All nutrition information, AI insights, meal analyses, scanned product reviews, weekly Sunday Calibrations, and chats with Cal (our educational nutrition guide) are intended for general educational and informational purposes only. They are not official nutrition advice and are not a substitute for professional medical advice, diagnosis, or treatment."
                     )
 
                     section(

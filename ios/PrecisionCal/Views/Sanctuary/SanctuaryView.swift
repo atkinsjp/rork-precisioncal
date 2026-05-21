@@ -130,7 +130,7 @@ struct SanctuaryView: View {
             Text("The Sanctuary")
                 .font(.system(size: 34, weight: .bold))
                 .foregroundStyle(PrecisionCalTheme.textPrimary)
-            Text("A quiet, PhD-led circle. Every voice is read by the Steward before it appears.")
+            Text("A quiet, moderated circle. Every voice is read by the Steward before it appears.")
                 .font(.custom("Georgia-Italic", size: 13))
                 .foregroundStyle(PrecisionCalTheme.textSecondary)
                 .lineSpacing(2)

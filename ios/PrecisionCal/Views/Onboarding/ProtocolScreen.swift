@@ -16,7 +16,7 @@ struct ProtocolScreen: View {
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(3)
                     .foregroundStyle(PrecisionCalTheme.terracotta)
-                Text("Dr. PrecisionCal's note")
+                Text("A note from Cal")
                     .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(PrecisionCalTheme.textPrimary)
                 Text("A personalized 300-word plan, written just now from your answers.")
@@ -114,7 +114,7 @@ struct ProtocolScreen: View {
             if !isLoading && error == nil {
                 HStack {
                     Spacer()
-                    Text("— Dr. PrecisionCal")
+                    Text("— Cal")
                         .font(.system(size: 22, weight: .regular, design: .serif))
                         .italic()
                         .foregroundStyle(PrecisionCalTheme.terracottaDeep)
@@ -210,7 +210,7 @@ struct ProtocolScreen: View {
 
         Be gentle with yourself. Progress is built from small, repeated choices — not perfection. Track what you eat with curiosity rather than judgment, and let the data guide your next thoughtful step.
 
-        In service of your wellness, — Dr. PrecisionCal
+        In service of your wellness, — Cal
         """
     }
 

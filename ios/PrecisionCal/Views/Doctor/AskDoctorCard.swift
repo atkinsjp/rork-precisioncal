@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Prominent CTA card on the Dashboard inviting the user to chat
-/// with Dr. PrecisionCal — a PhD-level AI nutritionist.
+/// with Cal — a friendly nutrition guide (educational, not clinical).
 struct AskDoctorCard: View {
     var onTap: () -> Void
 
@@ -25,7 +25,7 @@ struct AskDoctorCard: View {
                             )
                         )
                         .frame(width: 48, height: 48)
-                    Image(systemName: "stethoscope")
+                    Image(systemName: "leaf.fill")
                         .font(.system(size: 22, weight: .semibold))
                         .foregroundStyle(
                             LinearGradient(
@@ -37,7 +37,7 @@ struct AskDoctorCard: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Text("ASK DR. PRECISIONCAL")
+                        Text("ASK CAL")
                             .font(.system(size: 10, weight: .bold))
                             .tracking(2)
                             .foregroundStyle(.white.opacity(0.92))
@@ -45,10 +45,10 @@ struct AskDoctorCard: View {
                             .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(.white.opacity(0.85))
                     }
-                    Text("Your PhD nutritionist, on call.")
+                    Text("Your nutrition guide, on call.")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
-                    Text("Personalized to your goals & conditions.")
+                    Text("Educational info personalized to you.")
                         .font(.system(size: 12))
                         .foregroundStyle(.white.opacity(0.85))
                         .lineLimit(1)

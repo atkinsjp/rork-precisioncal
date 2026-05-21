@@ -339,7 +339,7 @@ struct DoctorChatView: View {
 
         Task {
             do {
-                let reply = try await AIService.shared.chatWithDoctor(
+                let reply = try await AIService.shared.chatWithCal(
                     profileSummary: summary,
                     history: history,
                     userMessage: trimmed
@@ -591,7 +591,7 @@ private struct TypingBubble: View {
                         )
                     )
                     .frame(width: 30, height: 30)
-                Image(systemName: "stethoscope")
+                Image(systemName: "leaf.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
             }

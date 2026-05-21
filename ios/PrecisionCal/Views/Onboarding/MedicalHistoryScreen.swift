@@ -16,7 +16,7 @@ struct MedicalHistoryScreen: View {
     var body: some View {
         WizardScreen(
             title: "Anything we should know?",
-            subtitle: "This stays private. It helps Dr. PrecisionCal write a safer protocol.",
+            subtitle: "This stays private. It helps Cal tailor safer educational guidance.",
             eyebrow: "Medical history",
             canContinue: !selected.isEmpty,
             onContinue: onContinue,

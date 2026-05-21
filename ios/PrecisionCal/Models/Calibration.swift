@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-/// A weekly "Sunday Calibration" record — three Protocol Pivots from Dr. PrecisionCal.
+/// A weekly "Sunday Calibration" record — three educational Protocol Pivots from Cal.
 @Model
 final class Calibration {
     var createdAt: Date

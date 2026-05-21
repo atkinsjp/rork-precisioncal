@@ -39,7 +39,7 @@ struct CalibrationHistoryView: View {
             Text("Your protocol pivots")
                 .font(.system(size: 30, weight: .bold))
                 .foregroundStyle(PrecisionCalTheme.textPrimary)
-            Text("Every Sunday, Dr. PrecisionCal reviews your week and recalibrates your protocol.")
+            Text("Every Sunday, Cal reviews your week and suggests educational adjustments to your protocol.")
                 .font(.custom("Georgia-Italic", size: 14))
                 .foregroundStyle(PrecisionCalTheme.textSecondary)
                 .lineSpacing(2)

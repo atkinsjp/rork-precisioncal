@@ -14,10 +14,9 @@ struct ProfileView: View {
     @State private var calibrationToast: String? = nil
     @State private var showPaywall: Bool = false
 
-    private let privacyURL = URL(string: "https://precisioncal.app/privacy.html")!
-    private let termsURL = URL(string: "https://precisioncal.app/terms.html")!
     private let supportURL = URL(string: "mailto:support@atkins-media.com")!
     @State private var showDisclaimer: Bool = false
+    @State private var legalSheet: LegalDocumentView.Kind? = nil
 
     private var profile: UserProfile? { profiles.first }
 
@@ -73,6 +72,9 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showDisclaimer) {
                 DisclaimerSheet()
+            }
+            .sheet(item: $legalSheet) { kind in
+                LegalDocumentView(kind: kind)
             }
         }
     }
@@ -342,43 +344,55 @@ struct ProfileView: View {
     private var legalCard: some View {
         GlassCard(cornerRadius: 18) {
             VStack(spacing: 0) {
-                legalRow(icon: "hand.raised.fill", label: "Privacy Policy", url: privacyURL)
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    legalSheet = .privacy
+                } label: {
+                    legalRowLabel(icon: "hand.raised.fill", label: "Privacy Policy", trailing: "chevron.right")
+                }
+                .buttonStyle(.plain)
                 Divider().padding(.leading, 56).opacity(0.5)
-                legalRow(icon: "doc.text.fill", label: "Terms of Service", url: termsURL)
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    legalSheet = .terms
+                } label: {
+                    legalRowLabel(icon: "doc.text.fill", label: "Terms of Service", trailing: "chevron.right")
+                }
+                .buttonStyle(.plain)
                 Divider().padding(.leading, 56).opacity(0.5)
-                legalRow(icon: "envelope.fill", label: "Contact Support", url: supportURL)
+                Link(destination: supportURL) {
+                    legalRowLabel(icon: "envelope.fill", label: "Contact Support", trailing: "arrow.up.right")
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                })
             }
             .padding(.vertical, 4)
         }
     }
 
-    private func legalRow(icon: String, label: String, url: URL) -> some View {
-        Link(destination: url) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(PrecisionCalTheme.terracotta.opacity(0.14))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: icon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(PrecisionCalTheme.terracotta)
-                }
-                Text(label)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(PrecisionCalTheme.textPrimary)
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(PrecisionCalTheme.textTertiary)
+    private func legalRowLabel(icon: String, label: String, trailing: String) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(PrecisionCalTheme.terracotta.opacity(0.14))
+                    .frame(width: 32, height: 32)
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(PrecisionCalTheme.terracotta)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .contentShape(Rectangle())
+            Text(label)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(PrecisionCalTheme.textPrimary)
+            Spacer()
+            Image(systemName: trailing)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(PrecisionCalTheme.textTertiary)
         }
-        .buttonStyle(.plain)
-        .simultaneousGesture(TapGesture().onEnded {
-            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-        })
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
     }
 
     private var ownerModeCard: some View {
