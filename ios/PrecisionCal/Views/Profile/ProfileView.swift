@@ -50,7 +50,9 @@ struct ProfileView: View {
 
                     legalCard
 
+                    #if DEBUG
                     ownerModeCard
+                    #endif
 
                     accountCard
 
@@ -265,10 +267,10 @@ struct ProfileView: View {
                             .foregroundStyle(PrecisionCalTheme.terracotta)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Medical Disclaimer")
+                        Text("Disclaimer & Sources")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(PrecisionCalTheme.textPrimary)
-                        Text("Educational use only — not a substitute for medical care.")
+                        Text("Medical disclaimer plus citations for all nutrition guidance.")
                             .font(.system(size: 12))
                             .foregroundStyle(PrecisionCalTheme.textSecondary)
                             .lineLimit(2)

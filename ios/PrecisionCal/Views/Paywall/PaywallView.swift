@@ -6,7 +6,9 @@ struct PaywallView: View {
     var onDismiss: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @State private var selectedPackageID: String?
+    @State private var legalSheet: LegalDocumentView.Kind? = nil
 
     private var packages: [Package] {
         guard let current = store.offerings?.current else { return [] }
@@ -89,6 +91,9 @@ struct PaywallView: View {
             }
             .padding(.top, 12)
             .padding(.trailing, 16)
+        }
+        .sheet(item: $legalSheet) { kind in
+            LegalDocumentView(kind: kind)
         }
         .alert("Something went wrong", isPresented: .init(
             get: { store.error != nil },
@@ -305,8 +310,38 @@ struct PaywallView: View {
 
     // MARK: - Footer
 
+    private var subscriptionDisclosure: String {
+        guard let pkg = selectedPackage else {
+            return "Subscription auto-renews until cancelled. Cancel anytime at least 24 hours before the end of the current period in your Apple ID Settings → Subscriptions. Payment will be charged to your Apple ID at confirmation of purchase."
+        }
+        let title = displayTitle(for: pkg)
+        let price = pkg.storeProduct.localizedPriceString
+        let periodLabel: String = {
+            switch pkg.packageType {
+            case .annual: return "year"
+            case .sixMonth: return "6 months"
+            case .threeMonth: return "3 months"
+            case .twoMonth: return "2 months"
+            case .monthly: return "month"
+            case .weekly: return "week"
+            case .lifetime: return ""
+            default: return ""
+            }
+        }()
+        let trial: String = {
+            guard let intro = pkg.storeProduct.introductoryDiscount, intro.price == 0 else { return "" }
+            let v = intro.subscriptionPeriod.value
+            let u = unitString(intro.subscriptionPeriod.unit, value: v)
+            return "After your \(v)-\(u) free trial, "
+        }()
+        if pkg.packageType == .lifetime {
+            return "\(title) is a one-time purchase of \(price). Payment will be charged to your Apple ID at confirmation of purchase."
+        }
+        return "\(trial)\(title) PrecisionCal Pro is \(price) per \(periodLabel) and auto-renews until cancelled. Cancel anytime at least 24 hours before the end of the current period in your Apple ID Settings → Subscriptions. Payment will be charged to your Apple ID at confirmation of purchase."
+    }
+
     private var footer: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Button {
                 Task { await store.restore() }
             } label: {
@@ -316,11 +351,39 @@ struct PaywallView: View {
             }
             .disabled(store.isPurchasing)
 
-            Text("Cancel anytime in Settings. Subscription auto-renews until cancelled.")
+            Text(subscriptionDisclosure)
                 .font(.system(size: 11))
                 .foregroundStyle(PrecisionCalTheme.textTertiary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 8)
+                .lineSpacing(2)
+
+            HStack(spacing: 6) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    legalSheet = .privacy
+                } label: {
+                    Text("Privacy Policy")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(PrecisionCalTheme.terracotta)
+                }
+                .buttonStyle(.plain)
+
+                Text("•")
+                    .font(.system(size: 12))
+                    .foregroundStyle(PrecisionCalTheme.textTertiary)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    legalSheet = .terms
+                } label: {
+                    Text("Terms of Use (EULA)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(PrecisionCalTheme.terracotta)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 2)
         }
     }
 

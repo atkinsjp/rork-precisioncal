@@ -50,6 +50,8 @@ struct DisclaimerSheet: View {
                         body: "PrecisionCal cannot help in an emergency. If you or someone you know may be in danger, call 911 (US) or your local emergency number immediately."
                     )
 
+                    sourcesSection
+
                     Text("You accepted these terms on \(acceptedDateText).")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(PrecisionCalTheme.textTertiary)
@@ -88,6 +90,128 @@ struct DisclaimerSheet: View {
             Text("Always consult a licensed healthcare professional.")
                 .font(.system(size: 14))
                 .foregroundStyle(PrecisionCalTheme.textSecondary)
+        }
+    }
+
+    // MARK: - Sources & Citations
+
+    private struct Citation: Identifiable {
+        let id = UUID()
+        let label: String
+        let detail: String
+        let url: URL?
+    }
+
+    private let citations: [Citation] = [
+        Citation(
+            label: "Mifflin-St Jeor Equation (BMR)",
+            detail: "Mifflin MD, St Jeor ST, et al. A new predictive equation for resting energy expenditure in healthy individuals. Am J Clin Nutr. 1990;51(2):241-247. Used to estimate baseline calorie targets.",
+            url: URL(string: "https://pubmed.ncbi.nlm.nih.gov/2305711/")
+        ),
+        Citation(
+            label: "USDA Dietary Guidelines for Americans, 2020–2025",
+            detail: "U.S. Department of Agriculture and U.S. Department of Health and Human Services. Used as the basis for general macronutrient and food-group guidance.",
+            url: URL(string: "https://www.dietaryguidelines.gov/")
+        ),
+        Citation(
+            label: "Acceptable Macronutrient Distribution Ranges (AMDR)",
+            detail: "Institute of Medicine (now National Academies). Dietary Reference Intakes for Energy, Carbohydrate, Fiber, Fat, Fatty Acids, Cholesterol, Protein, and Amino Acids (2005). Used to inform protein, carb, and fat ranges.",
+            url: URL(string: "https://nap.nationalacademies.org/catalog/10490/")
+        ),
+        Citation(
+            label: "Water Intake Recommendations",
+            detail: "Institute of Medicine. Dietary Reference Intakes for Water, Potassium, Sodium, Chloride, and Sulfate (2005). Used for daily hydration targets.",
+            url: URL(string: "https://nap.nationalacademies.org/catalog/10925/")
+        ),
+        Citation(
+            label: "Protein Requirements",
+            detail: "WHO/FAO/UNU Expert Consultation. Protein and amino acid requirements in human nutrition (WHO Technical Report Series 935, 2007).",
+            url: URL(string: "https://www.who.int/publications/i/item/WHO-TRS-935")
+        ),
+        Citation(
+            label: "USDA FoodData Central",
+            detail: "U.S. Department of Agriculture, Agricultural Research Service. Reference database for food composition and nutrient values used to corroborate AI meal estimates.",
+            url: URL(string: "https://fdc.nal.usda.gov/")
+        ),
+        Citation(
+            label: "Physical Activity Guidelines for Americans, 2nd ed.",
+            detail: "U.S. Department of Health and Human Services (2018). Used for activity-level adjustments to calorie targets.",
+            url: URL(string: "https://health.gov/our-work/nutrition-physical-activity/physical-activity-guidelines")
+        )
+    ]
+
+    private var sourcesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "books.vertical.fill")
+                    .foregroundStyle(PrecisionCalTheme.terracotta)
+                Text("Sources & References")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(PrecisionCalTheme.textPrimary)
+            }
+            Text("Nutrition targets, calorie estimates, and educational guidance in PrecisionCal are derived from the following peer-reviewed and governmental sources. Tap any source to view it.")
+                .font(.system(size: 13))
+                .foregroundStyle(PrecisionCalTheme.textSecondary)
+                .lineSpacing(3)
+
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(citations) { c in
+                    citationRow(c)
+                }
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(red: 0xFD/255, green: 0xFB/255, blue: 0xF7/255))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(PrecisionCalTheme.glassStroke.opacity(0.55), lineWidth: 1)
+                )
+        }
+    }
+
+    @ViewBuilder
+    private func citationRow(_ c: Citation) -> some View {
+        if let url = c.url {
+            Link(destination: url) {
+                citationContent(c)
+            }
+            .buttonStyle(.plain)
+        } else {
+            citationContent(c)
+        }
+    }
+
+    private func citationContent(_ c: Citation) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(c.label)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(PrecisionCalTheme.terracotta)
+                if c.url != nil {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(PrecisionCalTheme.terracotta)
+                }
+            }
+            Text(c.detail)
+                .font(.system(size: 12))
+                .foregroundStyle(PrecisionCalTheme.textSecondary)
+                .lineSpacing(2)
+                .multilineTextAlignment(.leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.6))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(PrecisionCalTheme.terracotta.opacity(0.18), lineWidth: 1)
+                )
         }
     }
 
