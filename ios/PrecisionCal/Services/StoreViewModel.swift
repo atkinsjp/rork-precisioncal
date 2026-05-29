@@ -15,6 +15,11 @@ final class StoreViewModel {
     var isPurchasing: Bool = false
     var error: String?
 
+    /// True once the initial subscription status has been resolved, so the UI
+    /// can avoid flashing the mandatory paywall for users who are already
+    /// subscribed on a cold launch.
+    var hasResolvedStatus: Bool = false
+
     /// Effective premium status — true if the user has the entitlement OR the
     /// owner/tester override is enabled. The override is intended only for the
     /// app owner during testing and review.
@@ -85,5 +90,6 @@ final class StoreViewModel {
         } catch {
             self.error = error.localizedDescription
         }
+        hasResolvedStatus = true
     }
 }

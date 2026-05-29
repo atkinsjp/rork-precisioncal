@@ -3,6 +3,9 @@ import RevenueCat
 
 struct PaywallView: View {
     var store: StoreViewModel
+    /// When true, the paywall cannot be dismissed (no close button) — the user
+    /// must subscribe (or restore) to continue using the app.
+    var isMandatory: Bool = false
     var onDismiss: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
@@ -79,18 +82,20 @@ struct PaywallView: View {
             .scrollIndicators(.hidden)
         }
         .overlay(alignment: .topTrailing) {
-            Button {
-                close()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(PrecisionCalTheme.textSecondary)
-                    .frame(width: 32, height: 32)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().stroke(PrecisionCalTheme.glassStroke, lineWidth: 1))
+            if !isMandatory {
+                Button {
+                    close()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(PrecisionCalTheme.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(PrecisionCalTheme.glassStroke, lineWidth: 1))
+                }
+                .padding(.top, 12)
+                .padding(.trailing, 16)
             }
-            .padding(.top, 12)
-            .padding(.trailing, 16)
         }
         .sheet(item: $legalSheet) { kind in
             LegalDocumentView(kind: kind)

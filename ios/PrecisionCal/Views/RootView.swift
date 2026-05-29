@@ -3,13 +3,19 @@ import SwiftData
 
 struct RootView: View {
     @AppStorage("hasOnboarded") private var hasOnboarded: Bool = false
-    @AppStorage("hasSeenInitialPaywall") private var hasSeenInitialPaywall: Bool = false
     @Environment(StoreViewModel.self) private var store
     @Query private var profiles: [UserProfile]
-    @State private var showPaywall: Bool = false
 
     private var isOnboarded: Bool {
         hasOnboarded || profiles.first != nil
+    }
+
+    /// The paywall is mandatory: once onboarding is complete, the app is
+    /// unusable until the user holds an active subscription (the 3-day free
+    /// trial is provided by the subscription's introductory offer). The owner
+    /// override bypasses this for the app owner during testing/review.
+    private var mustShowPaywall: Bool {
+        isOnboarded && store.hasResolvedStatus && !store.isPremium
     }
 
     var body: some View {
@@ -24,31 +30,11 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.5), value: isOnboarded)
-        .onAppear {
-            syncFlag()
-            maybePresentPaywall()
-        }
-        .onChange(of: profiles.count) { _, _ in
-            syncFlag()
-            maybePresentPaywall()
-        }
-        .onChange(of: isOnboarded) { _, _ in maybePresentPaywall() }
-        .onChange(of: store.isPremium) { _, premium in
-            if premium { showPaywall = false }
-        }
-        .fullScreenCover(isPresented: $showPaywall) {
-            PaywallView(store: store)
-                .onDisappear { hasSeenInitialPaywall = true }
-        }
-    }
-
-    private func maybePresentPaywall() {
-        guard isOnboarded, !hasSeenInitialPaywall, !store.isPremium else { return }
-        // Delay slightly so the tab transition feels intentional
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            if isOnboarded, !hasSeenInitialPaywall, !store.isPremium {
-                showPaywall = true
-            }
+        .onAppear(perform: syncFlag)
+        .onChange(of: profiles.count) { _, _ in syncFlag() }
+        .fullScreenCover(isPresented: .constant(mustShowPaywall)) {
+            PaywallView(store: store, isMandatory: true)
+                .interactiveDismissDisabled(true)
         }
     }
 
