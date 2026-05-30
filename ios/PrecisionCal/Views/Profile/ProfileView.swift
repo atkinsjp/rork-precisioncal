@@ -306,14 +306,12 @@ struct ProfileView: View {
                         .foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(store.isPremium ? "PrecisionCal Pro" : (store.isInTrial ? "Free Trial" : "Upgrade to Pro"))
+                    Text(store.isPremium ? "PrecisionCal Pro" : "Upgrade to Pro")
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(PrecisionCalTheme.textPrimary)
                     Text(store.isPremium
                          ? "Active — thank you for supporting calibration."
-                         : (store.isInTrial
-                            ? "\(store.trialDaysRemaining) day\(store.trialDaysRemaining == 1 ? "" : "s") left · subscribe to keep access."
-                            : "Subscribe to unlock the app."))
+                         : "Subscribe to unlock the app.")
                         .font(.system(size: 12))
                         .foregroundStyle(PrecisionCalTheme.textSecondary)
                         .lineLimit(2)

@@ -160,13 +160,6 @@ struct MealLogView: View {
                 }
                 .padding(.horizontal, 8)
 
-                if !store.isPremium && store.isInTrial {
-                    Text("Free trial — \(store.trialDaysRemaining) day\(store.trialDaysRemaining == 1 ? "" : "s") left · all features unlocked")
-                        .font(.system(size: 11, weight: .medium))
-                        .tracking(0.4)
-                        .foregroundStyle(PrecisionCalTheme.textTertiary)
-                }
-
                 Button {
                     showManualEntry = true
                 } label: {
