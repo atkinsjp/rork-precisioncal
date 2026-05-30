@@ -306,9 +306,9 @@ struct PaywallView: View {
         if let pkg = selectedPackage,
            let intro = pkg.storeProduct.introductoryDiscount,
            intro.price == 0 {
-            let value = intro.subscriptionPeriod.value
-            let unit = unitString(intro.subscriptionPeriod.unit, value: value)
-            return "Start \(value)-\(unit) free trial"
+            // User-facing CTA is intentionally catchy and plan-agnostic — the free
+            // trial length & billing terms are fully disclosed in the footer.
+            return "Start Free Trial"
         }
         return "Continue"
     }
