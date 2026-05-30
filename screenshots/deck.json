@@ -1,0 +1,28 @@
+{
+  "theme": {
+    "style": "Warm terracotta and sage wellness world with soft organic gradients, creamy ivory depth, and gentle ambient lighting evoking natural materials and botanical calm. The mood is grounded and premium — earthy pigments, smooth layered silk-like flows, and a tactile grain texture that feels handcrafted yet clinical-clean. Backgrounds should feel like sun-warmed natural surfaces with depth, never sterile or cold.",
+    "headlineFont": "font-family: 'Plus Jakarta Sans', sans-serif; @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap');",
+    "headlineFontSize": 120,
+    "mockupIds": {
+      "iphone": "silver",
+      "ipad": "silver"
+    },
+    "palette": {
+      "primary": "#C4714A",
+      "secondary": "#7A9E7E",
+      "accent": "#E8C47A"
+    }
+  },
+  "slides": [
+    {
+      "label": "Paywall",
+      "backgroundPrompt": "Abstract digital art featuring flowing organic silk ribbons sweeping diagonally across the frame in warm terracotta, muted sage green, and creamy ivory, with translucent layered veils of color overlapping to create botanical depth and softness. Gentle diffused light blooms from the lower-right corner in warm amber-ivory, casting long smooth gradients across the mid-frame while the upper 30% settles into a deep, calm terracotta-brown that is clean and uncluttered for text overlay. Fine organic grain texture and subtle depth-of-field blur along the outer edges add tactile richness and premium feel. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/a8c21a0c-167e-4d32-a162-2ba672453450.png"
+    }
+  ],
+  "headlines": {
+    "en": {
+      "Paywall": "Start Free<br>Go Premium"
+    }
+  }
+}
