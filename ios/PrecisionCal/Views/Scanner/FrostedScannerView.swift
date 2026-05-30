@@ -205,7 +205,7 @@ struct FrostedScannerView: View {
 
     private func handleScanned(_ code: String) {
         guard !isLookingUp, scannedBarcode != code else { return }
-        guard EntitlementGate.canScanBarcode(isPremium: store.isPremium) else {
+        guard store.hasAccess else {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
             scannedBarcode = nil
             showPaywall = true
@@ -213,7 +213,6 @@ struct FrostedScannerView: View {
         }
         scannedBarcode = code
         isLookingUp = true
-        EntitlementGate.recordBarcodeScan()
 
         Task {
             do {

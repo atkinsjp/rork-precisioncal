@@ -10,12 +10,12 @@ struct RootView: View {
         hasOnboarded || profiles.first != nil
     }
 
-    /// The paywall is mandatory: once onboarding is complete, the app is
-    /// unusable until the user holds an active subscription (the 3-day free
-    /// trial is provided by the subscription's introductory offer). The owner
-    /// override bypasses this for the app owner during testing/review.
+    /// The paywall is mandatory: every feature is unlocked during the 3-day
+    /// free trial, but once the trial elapses the app is unusable until the
+    /// user holds an active subscription. The owner override bypasses this for
+    /// the app owner during testing/review.
     private var mustShowPaywall: Bool {
-        isOnboarded && store.hasResolvedStatus && !store.isPremium
+        isOnboarded && store.hasResolvedStatus && !store.hasAccess
     }
 
     var body: some View {
@@ -32,6 +32,9 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.5), value: isOnboarded)
         .onAppear(perform: syncFlag)
         .onChange(of: profiles.count) { _, _ in syncFlag() }
+        .onChange(of: isOnboarded) { _, onboarded in
+            if onboarded { store.startTrialIfNeeded() }
+        }
         .fullScreenCover(isPresented: .constant(mustShowPaywall)) {
             PaywallView(store: store, isMandatory: true)
                 .interactiveDismissDisabled(true)
@@ -43,6 +46,11 @@ struct RootView: View {
         // so the user is never sent back through onboarding.
         if profiles.first != nil, !hasOnboarded {
             hasOnboarded = true
+        }
+        // The free trial clock starts the moment the user finishes onboarding
+        // and reaches the app for the first time.
+        if isOnboarded {
+            store.startTrialIfNeeded()
         }
     }
 }

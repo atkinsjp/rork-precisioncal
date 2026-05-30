@@ -306,10 +306,14 @@ struct ProfileView: View {
                         .foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(store.isPremium ? "PrecisionCal Pro" : "Upgrade to Pro")
+                    Text(store.isPremium ? "PrecisionCal Pro" : (store.isInTrial ? "Free Trial" : "Upgrade to Pro"))
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(PrecisionCalTheme.textPrimary)
-                    Text(store.isPremium ? "Active — thank you for supporting calibration." : "Unlock unlimited scans & weekly calibration.")
+                    Text(store.isPremium
+                         ? "Active — thank you for supporting calibration."
+                         : (store.isInTrial
+                            ? "\(store.trialDaysRemaining) day\(store.trialDaysRemaining == 1 ? "" : "s") left · subscribe to keep access."
+                            : "Subscribe to unlock the app."))
                         .font(.system(size: 12))
                         .foregroundStyle(PrecisionCalTheme.textSecondary)
                         .lineLimit(2)
@@ -437,13 +441,13 @@ struct ProfileView: View {
                             .tint(PrecisionCalTheme.textPrimary)
                             .scaleEffect(0.8)
                     } else {
-                        Image(systemName: store.isPremium ? "arrow.triangle.2.circlepath" : "lock.fill")
+                        Image(systemName: store.hasAccess ? "arrow.triangle.2.circlepath" : "lock.fill")
                             .font(.system(size: 13, weight: .bold))
                     }
                     Text(calibrating ? "Recalibrating…" : "Re-run calibration")
                         .font(.system(size: 13, weight: .bold))
                         .tracking(1.1)
-                    if !store.isPremium && !calibrating {
+                    if !store.hasAccess && !calibrating {
                         Text("PRO")
                             .font(.system(size: 9, weight: .bold))
                             .tracking(0.8)
@@ -663,7 +667,7 @@ struct ProfileView: View {
 
     private func runCalibration() async {
         guard !calibrating else { return }
-        guard store.isPremium else {
+        guard store.hasAccess else {
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
             showPaywall = true
             return

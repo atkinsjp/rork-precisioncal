@@ -20,8 +20,7 @@ struct MealLogView: View {
     @State private var showPaywall: Bool = false
     @State private var editingMeal: Meal?
 
-    private var canScan: Bool { EntitlementGate.canScanMeal(isPremium: store.isPremium) }
-    private var scansRemaining: Int { EntitlementGate.mealScansRemaining(isPremium: store.isPremium) }
+    private var canScan: Bool { store.hasAccess }
 
     var body: some View {
         ZStack {
@@ -161,10 +160,8 @@ struct MealLogView: View {
                 }
                 .padding(.horizontal, 8)
 
-                if !store.isPremium {
-                    Text(scansRemaining > 0
-                         ? "\(scansRemaining) free AI scan\(scansRemaining == 1 ? "" : "s") left"
-                         : "You've used your free AI scans.")
+                if !store.isPremium && store.isInTrial {
+                    Text("Free trial — \(store.trialDaysRemaining) day\(store.trialDaysRemaining == 1 ? "" : "s") left · all features unlocked")
                         .font(.system(size: 11, weight: .medium))
                         .tracking(0.4)
                         .foregroundStyle(PrecisionCalTheme.textTertiary)
@@ -209,7 +206,6 @@ struct MealLogView: View {
             showPaywall = true
             return
         }
-        EntitlementGate.recordMealScan()
         let meal = Meal(imageData: imageData, status: "analyzing")
         modelContext.insert(meal)
         try? modelContext.save()
