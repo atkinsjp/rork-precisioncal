@@ -37,6 +37,17 @@ final class StoreViewModel {
         UserDefaults.standard.set(enabled, forKey: Self.ownerOverrideKey)
     }
 
+    /// Resolve entitlement from a `CustomerInfo` payload defensively. We first try
+    /// the named entitlement, but fall back to "any active entitlement" so a
+    /// dashboard identifier mismatch (e.g. a trailing space or a renamed
+    /// entitlement) can't strand a paying/trialing user behind the mandatory
+    /// paywall. RevenueCat only ever reports entitlements that are genuinely
+    /// active, so this stays safe.
+    private static func resolveEntitled(from info: CustomerInfo) -> Bool {
+        if info.entitlements[entitlementID]?.isActive == true { return true }
+        return !info.entitlements.active.isEmpty
+    }
+
     init() {
         Task { await listenForUpdates() }
         Task { await fetchOfferings() }
@@ -45,7 +56,7 @@ final class StoreViewModel {
 
     private func listenForUpdates() async {
         for await info in Purchases.shared.customerInfoStream {
-            self.isEntitled = info.entitlements[Self.entitlementID]?.isActive == true
+            self.isEntitled = Self.resolveEntitled(from: info)
         }
     }
 
@@ -64,7 +75,7 @@ final class StoreViewModel {
         do {
             let result = try await Purchases.shared.purchase(package: package)
             if !result.userCancelled {
-                isEntitled = result.customerInfo.entitlements[Self.entitlementID]?.isActive == true
+                isEntitled = Self.resolveEntitled(from: result.customerInfo)
             }
         } catch ErrorCode.purchaseCancelledError {
             // user cancellation — ignore
@@ -80,7 +91,7 @@ final class StoreViewModel {
         isPurchasing = true
         do {
             let info = try await Purchases.shared.restorePurchases()
-            isEntitled = info.entitlements[Self.entitlementID]?.isActive == true
+            isEntitled = Self.resolveEntitled(from: info)
             if !isPremium {
                 self.error = "No active subscription found to restore."
             }
@@ -93,7 +104,7 @@ final class StoreViewModel {
     func checkStatus() async {
         do {
             let info = try await Purchases.shared.customerInfo()
-            isEntitled = info.entitlements[Self.entitlementID]?.isActive == true
+            isEntitled = Self.resolveEntitled(from: info)
         } catch {
             self.error = error.localizedDescription
         }
