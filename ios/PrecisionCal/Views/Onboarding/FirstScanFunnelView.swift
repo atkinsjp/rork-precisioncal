@@ -655,11 +655,15 @@ private struct FunnelScoreRing: View {
     }
 }
 
-/// Lightweight confetti: small rounded shards radiating outward on activation.
+/// Celebratory confetti: shards launch upward/outward on activation, then arc back down
+/// under gravity while spinning and fading — a real burst that plays and clears, not a frozen frame.
 private struct ConfettiBurst: View {
     let tint: Color
     let isActive: Bool
 
+    @State private var t: CGFloat = 0
+
+    private let count = 20
     private let palette: [Color] = [
         PrecisionCalTheme.sage,
         PrecisionCalTheme.terracotta,
@@ -667,27 +671,48 @@ private struct ConfettiBurst: View {
         PrecisionCalTheme.sageLight
     ]
 
+    /// Deterministic pseudo-random in 0...1 for a stable per-shard trajectory.
+    private func rand(_ i: Int, _ salt: Int) -> CGFloat {
+        let x = sin(Double(i &* 928_371 &+ salt &* 12_713)) * 43_758.5453
+        return CGFloat(x - floor(x))
+    }
+
     var body: some View {
         ZStack {
-            ForEach(0..<14, id: \.self) { i in
-                let angle = Double(i) / 14.0 * 2 * .pi
-                let distance: CGFloat = isActive ? 118 : 0
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(palette[i % palette.count])
-                    .frame(width: 6, height: 12)
-                    .offset(
-                        x: cos(angle) * distance,
-                        y: sin(angle) * distance
-                    )
-                    .rotationEffect(.radians(angle + (isActive ? 2.2 : 0)))
-                    .opacity(isActive ? 0.95 : 0)
-                    .scaleEffect(isActive ? 1 : 0.2)
-                    .animation(
-                        .spring(response: 0.6, dampingFraction: 0.7).delay(Double(i) * 0.012),
-                        value: isActive
-                    )
+            ForEach(0..<count, id: \.self) { i in
+                shard(i)
             }
         }
         .allowsHitTesting(false)
+        .onAppear { if isActive { fire() } }
+        .onChange(of: isActive) { _, active in if active { fire() } }
+    }
+
+    private func fire() {
+        t = 0
+        withAnimation(.easeOut(duration: 1.5)) { t = 1 }
+    }
+
+    private func shard(_ i: Int) -> some View {
+        let dir = rand(i, 1) * 2 - 1                 // horizontal direction -1...1
+        let xSpeed = dir * (50 + rand(i, 2) * 130)   // lateral spread
+        let upSpeed = 120 + rand(i, 3) * 130         // initial upward velocity
+        let spin = (rand(i, 4) * 2 - 1) * 760        // total rotation in degrees
+        let size = 6 + rand(i, 5) * 5
+
+        let x = xSpeed * t
+        let y = -upSpeed * t + 430 * t * t           // up, then gravity pulls down
+        let opacity: CGFloat = {
+            if t < 0.12 { return t / 0.12 }
+            if t > 0.72 { return max(0, 1 - (t - 0.72) / 0.28) }
+            return 1
+        }()
+
+        return RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(palette[i % palette.count])
+            .frame(width: size, height: size * 1.8)
+            .rotationEffect(.degrees(Double(spin * t)))
+            .opacity(Double(opacity))
+            .offset(x: x, y: y)
     }
 }

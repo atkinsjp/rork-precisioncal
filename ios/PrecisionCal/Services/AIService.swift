@@ -560,7 +560,7 @@ nonisolated final class AIService: Sendable {
             title: finalTitle,
             items: mergedItems,
             metabolicImpact: (p4.metabolicImpact?.isEmpty == false ? p4.metabolicImpact! : "Balanced"),
-            mealScore: max(0, min(100, p4.mealScore ?? 0)),
+            mealScore: resolveMealScore(modelValue: p4.mealScore, items: mergedItems, saturatedFat: sat),
             qcNotes: qcCombined,
             lipidSheenDetected: sheenDetected,
             lipidNote: p5.summaryNote ?? "",
@@ -599,6 +599,41 @@ nonisolated final class AIService: Sendable {
         let nb = b.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if na == nb { return true }
         return na.contains(nb) || nb.contains(na)
+    }
+
+    // MARK: - Meal score
+
+    /// Resolve the final meal score. Trusts the model's value when it's a sane non-zero number;
+    /// otherwise derives a deterministic 0–100 score from the actual macros so the reveal screen
+    /// never shows a flat 0 just because synthesis omitted the field.
+    private func resolveMealScore(modelValue: Int?, items: [MealAnalysisResult.Item], saturatedFat: Double) -> Int {
+        if let v = modelValue, v > 0 { return max(0, min(100, v)) }
+        return computeFallbackScore(items: items, saturatedFat: saturatedFat)
+    }
+
+    /// Deterministic nutrition score from macros: rewards protein adequacy and fiber,
+    /// penalizes heavy sugar and saturated-fat loads. Clamped to 30–96 so it always reads as a real grade.
+    private func computeFallbackScore(items: [MealAnalysisResult.Item], saturatedFat: Double) -> Int {
+        let calories = items.reduce(0.0) { $0 + $1.calories }
+        let protein = items.reduce(0.0) { $0 + $1.protein }
+        let fiber = items.reduce(0.0) { $0 + $1.fiber }
+        let sugar = items.reduce(0.0) { $0 + $1.sugar }
+        guard calories > 0 else { return 60 }
+
+        var score = 62.0
+        // Protein density (g per 100 kcal): ~7g/100kcal is excellent.
+        let proteinDensity = protein / (calories / 100)
+        score += min(18, proteinDensity * 2.6)
+        // Fiber: meaningful fiber lifts the score.
+        score += min(16, fiber * 1.6)
+        // Sugar load relative to calories penalizes sugary meals.
+        let sugarRatio = (sugar * 4) / calories
+        score -= min(22, sugarRatio * 60)
+        // Saturated-fat load penalty.
+        let satRatio = (saturatedFat * 9) / calories
+        score -= min(16, satRatio * 45)
+
+        return Int(max(30, min(96, score.rounded())))
     }
 
     // MARK: - Structural integrity (item reconciliation & macro backfill)
@@ -745,7 +780,7 @@ nonisolated final class AIService: Sendable {
             title: title,
             items: fallbackItems,
             metabolicImpact: (p4.metabolicImpact?.isEmpty == false ? p4.metabolicImpact! : "Balanced"),
-            mealScore: max(0, min(100, p4.mealScore ?? 0)),
+            mealScore: resolveMealScore(modelValue: p4.mealScore, items: fallbackItems, saturatedFat: sat),
             qcNotes: p4.qcNotes ?? "",
             lipidSheenDetected: false,
             lipidNote: "",
