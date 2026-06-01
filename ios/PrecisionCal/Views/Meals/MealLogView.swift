@@ -254,6 +254,14 @@ struct MealLogView: View {
         meal.qcNotes = result.qcNotes
         meal.lipidSheenDetected = result.lipidSheenDetected
         meal.lipidNote = result.lipidNote
+        meal.saturatedFat = result.saturatedFat
+        meal.unsaturatedFat = result.unsaturatedFat
+        meal.transFat = result.transFat
+        meal.hiddenFatAddedCalories = result.hiddenFatAddedCalories
+        meal.hiddenFatAddedFatG = result.hiddenFatAddedFatG
+        meal.hiddenFatTargetItem = result.hiddenFatTargetItem
+        meal.hiddenFatMechanism = result.hiddenFatMechanism
+        meal.micronutrients = result.micronutrients
         meal.status = "complete"
 
         meal.items.removeAll()

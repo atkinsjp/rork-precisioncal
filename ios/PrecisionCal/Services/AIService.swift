@@ -10,6 +10,20 @@ nonisolated struct MealAnalysisResult: Codable, Sendable {
     let lipidSheenDetected: Bool
     let lipidNote: String
 
+    // Granular fat subcategories (g) — sat + unsat + trans reconcile to total fat.
+    let saturatedFat: Double
+    let unsaturatedFat: Double
+    let transFat: Double
+
+    // Hidden Fat telemetry (verified lipid sheen adjustments)
+    let hiddenFatAddedCalories: Double
+    let hiddenFatAddedFatG: Double
+    let hiddenFatTargetItem: String
+    let hiddenFatMechanism: String
+
+    // Clinical micronutrient matrix
+    let micronutrients: [Micronutrient]
+
     nonisolated struct Item: Codable, Sendable {
         let name: String
         let preparation: String
@@ -108,6 +122,10 @@ nonisolated struct Pass4Output: Codable, Sendable {
     let metabolicImpact: String?
     let mealScore: Int?
     let qcNotes: String?
+    let saturatedFatG: Double?
+    let unsaturatedFatG: Double?
+    let transFatG: Double?
+    let micronutrients: [Micronutrient]?
 }
 
 nonisolated struct Pass5Adjustment: Codable, Sendable {
@@ -482,10 +500,12 @@ nonisolated final class AIService: Sendable {
         // into the final synthesized payload.
         let p5 = lipid
         let finalTitle = (p4.title?.isEmpty == false ? p4.title! : title)
+        // Integrity: 1g of detected hidden fat == 9 kcal. We derive calories from grams
+        // (never trusting the model's kcal) so totals stay perfectly synchronized.
         let mergedItems: [MealAnalysisResult.Item] = p4.items.map { item in
             let adj = p5.adjustments.first { matchName($0.name, item.name) && $0.lipidSheenDetected }
             let addedFat = max(0, adj?.addedFatG ?? 0)
-            let addedKcal = max(0, adj?.addedCalories ?? (addedFat * 9))
+            let addedKcal = (addedFat * 9).rounded()
             return MealAnalysisResult.Item(
                 name: item.name,
                 preparation: item.preparation,
@@ -505,7 +525,28 @@ nonisolated final class AIService: Sendable {
             if base.isEmpty { return note }
             return base + " " + note
         }()
-        let sheenDetected = p5.adjustments.contains { $0.lipidSheenDetected }
+        // Hidden Fat telemetry — aggregate all confirmed lipid adjustments (9 kcal/g enforced).
+        let confirmed = p5.adjustments.filter { $0.lipidSheenDetected }
+        let sheenDetected = !confirmed.isEmpty
+        let addedFatTotal = confirmed.reduce(0.0) { $0 + max(0, $1.addedFatG) }
+        let addedKcalTotal = (addedFatTotal * 9).rounded()
+        let topAdj = confirmed.max { max(0, $0.addedFatG) < max(0, $1.addedFatG) }
+        let targetItem = topAdj?.name ?? ""
+        let mechanism: String = {
+            guard sheenDetected else { return "" }
+            let fat = topAdj?.inferredFat
+            if let fat, !fat.isEmpty, fat.lowercased() != "null" {
+                return "\(fat) sheen confirmation via Pass 3 macro-zoom"
+            }
+            return "lipid sheen confirmation via Pass 3 macro-zoom"
+        }()
+
+        // Fat subcategories — reconcile sat + unsat + trans to the merged total fat.
+        let totalFat = mergedItems.reduce(0.0) { $0 + $1.fat }
+        let sat = max(0, min(totalFat, p4.saturatedFatG ?? (totalFat * 0.32).rounded()))
+        let trans = max(0, min(totalFat - sat, p4.transFatG ?? 0))
+        let unsat = max(0, totalFat - sat - trans)
+
         let result = MealAnalysisResult(
             title: finalTitle,
             items: mergedItems,
@@ -513,7 +554,15 @@ nonisolated final class AIService: Sendable {
             mealScore: max(0, min(100, p4.mealScore ?? 0)),
             qcNotes: qcCombined,
             lipidSheenDetected: sheenDetected,
-            lipidNote: p5.summaryNote ?? ""
+            lipidNote: p5.summaryNote ?? "",
+            saturatedFat: sat,
+            unsaturatedFat: unsat,
+            transFat: trans,
+            hiddenFatAddedCalories: addedKcalTotal,
+            hiddenFatAddedFatG: addedFatTotal,
+            hiddenFatTargetItem: targetItem,
+            hiddenFatMechanism: mechanism,
+            micronutrients: (p4.micronutrients ?? []).filter { $0.amountMg >= 0 }
         )
         onProgress(.pass6Synthesized(result))
         return result
@@ -556,8 +605,11 @@ nonisolated final class AIService: Sendable {
         Score the meal 0 to 100 on protein adequacy, fiber, sugar load, prep, and balance.
         metabolicImpact must be ONE short label like "Steady energy", "Quick spike", "Slow burn", "Recovery boost", or "Light & lean".
         qcNotes is ONE concise sentence.
+        GRANULAR BREAKDOWN — required, numeric only (never strings or ranges):
+        - Fat subcategories for the WHOLE meal: saturatedFatG, unsaturatedFatG, transFatG; they MUST sum to total fat grams.
+        - micronutrients: array of notable micronutrients (Sodium, Potassium, Magnesium, Calcium, Iron, Vitamin C, etc.) each with amountMg (convert mcg to mg) and pctDailyValue (integer percent). Include at least 4 for a real meal.
         Return STRICT JSON only with this exact shape:
-        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|other","grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"waterMl":number}],"metabolicImpact":"...","mealScore":number,"qcNotes":"..."}
+        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|other","grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"waterMl":number}],"metabolicImpact":"...","mealScore":number,"qcNotes":"...","saturatedFatG":number,"unsaturatedFatG":number,"transFatG":number,"micronutrients":[{"name":"Sodium","amountMg":number,"pctDailyValue":number}]}
         """
         let body: [String: Any] = [
             "model": model,
@@ -577,6 +629,11 @@ nonisolated final class AIService: Sendable {
 
         let title = (p4.title?.isEmpty == false ? p4.title! : defaultTitle(fromItems: p4.items.map { $0.name }))
         onItemsIdentified(p4.items.map { $0.name }, title)
+
+        let totalFat = p4.items.reduce(0.0) { $0 + $1.fat }
+        let sat = max(0, min(totalFat, p4.saturatedFatG ?? (totalFat * 0.32).rounded()))
+        let trans = max(0, min(totalFat - sat, p4.transFatG ?? 0))
+        let unsat = max(0, totalFat - sat - trans)
 
         return MealAnalysisResult(
             title: title,
@@ -598,7 +655,15 @@ nonisolated final class AIService: Sendable {
             mealScore: max(0, min(100, p4.mealScore ?? 0)),
             qcNotes: p4.qcNotes ?? "",
             lipidSheenDetected: false,
-            lipidNote: ""
+            lipidNote: "",
+            saturatedFat: sat,
+            unsaturatedFat: unsat,
+            transFat: trans,
+            hiddenFatAddedCalories: 0,
+            hiddenFatAddedFatG: 0,
+            hiddenFatTargetItem: "",
+            hiddenFatMechanism: "",
+            micronutrients: (p4.micronutrients ?? []).filter { $0.amountMg >= 0 }
         )
     }
 
@@ -785,10 +850,13 @@ nonisolated final class AIService: Sendable {
         - mealScore (0–100): protein adequacy, fiber, sugar load, prep method, balance.
         - metabolicImpact: ONE short label like "Steady energy", "Quick spike", "Slow burn", "Recovery boost", "Light & lean".
         - qcNotes: ONE sentence rationale.
+        GRANULAR BREAKDOWN — required, numeric only (never strings or ranges):
+        - Fat subcategories for the WHOLE meal: saturatedFatG, unsaturatedFatG, transFatG. They MUST sum to the meal's total fat grams. Estimate from food type (animal fats/butter/cheese ~higher saturated; olive/seed oils/fish/nuts ~mostly unsaturated; fried/processed may carry small trans).
+        - micronutrients: an array of every notable micronutrient present (Sodium, Potassium, Magnesium, Calcium, Iron, Vitamin C, Vitamin A, Vitamin D, etc.). For each give amountMg (milligrams; convert mcg to mg) and pctDailyValue (0–100+, integer percent of standard daily value). Include at least 4 when the meal contains real food.
         Pass 1 title: \(p1.title ?? "Meal").
         Pass 3 nutrition: \(nutritionJSON).
         Return STRICT JSON only:
-        {"title":"short meal title","items":[{"name":"...","preparation":"...","grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"waterMl":number}],"metabolicImpact":"...","mealScore":0-100,"qcNotes":"..."}
+        {"title":"short meal title","items":[{"name":"...","preparation":"...","grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"waterMl":number}],"metabolicImpact":"...","mealScore":0-100,"qcNotes":"...","saturatedFatG":number,"unsaturatedFatG":number,"transFatG":number,"micronutrients":[{"name":"Sodium","amountMg":number,"pctDailyValue":number}]}
         """
         let body: [String: Any] = [
             "model": model,

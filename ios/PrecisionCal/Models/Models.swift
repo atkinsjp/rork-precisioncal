@@ -67,6 +67,14 @@ final class UserProfile {
     }
 }
 
+/// A single detected micronutrient with its absolute amount and percentage toward the daily optimal target.
+nonisolated struct Micronutrient: Codable, Sendable, Hashable, Identifiable {
+    var id: String { name }
+    let name: String
+    let amountMg: Double
+    let pctDailyValue: Double
+}
+
 @Model
 final class Meal {
     var createdAt: Date
@@ -85,6 +93,20 @@ final class Meal {
     var qcNotes: String
     var lipidSheenDetected: Bool = false
     var lipidNote: String = ""
+
+    // Granular fat subcategories (g)
+    var saturatedFat: Double = 0
+    var unsaturatedFat: Double = 0
+    var transFat: Double = 0
+
+    // Hidden Fat telemetry (verified lipid sheen adjustments)
+    var hiddenFatAddedCalories: Double = 0
+    var hiddenFatAddedFatG: Double = 0
+    var hiddenFatTargetItem: String = ""
+    var hiddenFatMechanism: String = ""
+
+    // Clinical micronutrient matrix
+    var micronutrients: [Micronutrient] = []
 
     @Relationship(deleteRule: .cascade, inverse: \MealItem.meal)
     var items: [MealItem] = []
@@ -105,7 +127,15 @@ final class Meal {
         metabolicImpact: String = "",
         qcNotes: String = "",
         lipidSheenDetected: Bool = false,
-        lipidNote: String = ""
+        lipidNote: String = "",
+        saturatedFat: Double = 0,
+        unsaturatedFat: Double = 0,
+        transFat: Double = 0,
+        hiddenFatAddedCalories: Double = 0,
+        hiddenFatAddedFatG: Double = 0,
+        hiddenFatTargetItem: String = "",
+        hiddenFatMechanism: String = "",
+        micronutrients: [Micronutrient] = []
     ) {
         self.createdAt = createdAt
         self.title = title
@@ -123,6 +153,14 @@ final class Meal {
         self.qcNotes = qcNotes
         self.lipidSheenDetected = lipidSheenDetected
         self.lipidNote = lipidNote
+        self.saturatedFat = saturatedFat
+        self.unsaturatedFat = unsaturatedFat
+        self.transFat = transFat
+        self.hiddenFatAddedCalories = hiddenFatAddedCalories
+        self.hiddenFatAddedFatG = hiddenFatAddedFatG
+        self.hiddenFatTargetItem = hiddenFatTargetItem
+        self.hiddenFatMechanism = hiddenFatMechanism
+        self.micronutrients = micronutrients
     }
 }
 

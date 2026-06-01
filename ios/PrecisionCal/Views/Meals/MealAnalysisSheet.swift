@@ -9,6 +9,7 @@ struct MealAnalysisSheet: View {
     @State private var showMirror: Bool = false
     @State private var showRipple: Bool = false
     @State private var showEdit: Bool = false
+    @State private var macroExpanded: Bool = false
 
     var body: some View {
         ZStack {
@@ -32,7 +33,13 @@ struct MealAnalysisSheet: View {
                         failureCard
                     } else if !meal.items.isEmpty {
                         nutritionSummary
-                        macroBars
+                        if meal.lipidSheenDetected && meal.hiddenFatAddedCalories > 0 {
+                            hiddenFatAlertCard
+                        }
+                        macroCalibrationCard
+                        if !meal.micronutrients.isEmpty {
+                            micronutrientMatrixCard
+                        }
                         itemsList
                     } else if !quickItems.isEmpty {
                         quickItemsList
@@ -213,18 +220,139 @@ struct MealAnalysisSheet: View {
         }
     }
 
-    private var macroBars: some View {
+    // MARK: - Card 1 — Hidden Fat Alert
+
+    private var hiddenFatAlertCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("⚠️")
+                    .font(.system(size: 20))
+                Text("Hidden Fat Alert: +\(Int(meal.hiddenFatAddedCalories.rounded())) kcal (+\(formatG(meal.hiddenFatAddedFatG))g Fat)")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(PrecisionCalTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text("\(hiddenFatSubtext)")
+                .font(.system(size: 13))
+                .foregroundStyle(PrecisionCalTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(PrecisionCalTheme.amber.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(PrecisionCalTheme.amber.opacity(0.65), lineWidth: 1.5)
+        )
+        .shadow(color: PrecisionCalTheme.amber.opacity(0.30), radius: 18, x: 0, y: 6)
+    }
+
+    private var hiddenFatSubtext: String {
+        let mechanism = meal.hiddenFatMechanism.isEmpty ? "lipid sheen confirmation via Pass 3 macro-zoom" : meal.hiddenFatMechanism
+        let target = meal.hiddenFatTargetItem.isEmpty ? "the plate" : meal.hiddenFatTargetItem
+        return "\(mechanism.prefix(1).capitalized + mechanism.dropFirst()) on '\(target)'. Base metrics mathematically adjusted."
+    }
+
+    // MARK: - Card 2 — Advanced Macro Calibration
+
+    private var macroCalibrationCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            sectionLabel("Macros")
+            sectionLabel("Advanced Macro Calibration")
             GlassCard {
                 VStack(spacing: 16) {
                     MacroBar(label: "Protein", grams: meal.totalProtein, color: PrecisionCalTheme.proteinColor, scale: 80)
                     MacroBar(label: "Carbs", grams: meal.totalCarbs, color: PrecisionCalTheme.carbColor, scale: 120)
                     MacroBar(label: "Fat", grams: meal.totalFat, color: PrecisionCalTheme.fatColor, scale: 50)
+
+                    Button {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                            macroExpanded.toggle()
+                        }
+                        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(macroExpanded ? "Hide breakdown" : "Show breakdown")
+                                .font(.system(size: 13, weight: .semibold))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 11, weight: .bold))
+                                .rotationEffect(.degrees(macroExpanded ? 180 : 0))
+                        }
+                        .foregroundStyle(PrecisionCalTheme.terracottaDeep)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    if macroExpanded {
+                        VStack(spacing: 0) {
+                            subMacroRow("Net Carbs", value: max(0, meal.totalCarbs - meal.totalFiber), color: PrecisionCalTheme.carbColor)
+                            subDivider
+                            subMacroRow("Fiber", value: meal.totalFiber, color: PrecisionCalTheme.sage)
+                            subDivider
+                            subMacroRow("Saturated Fats", value: meal.saturatedFat, color: PrecisionCalTheme.fatColor)
+                            subDivider
+                            subMacroRow("Unsaturated Fats", value: meal.unsaturatedFat, color: PrecisionCalTheme.hydrationColor)
+                            if meal.transFat > 0 {
+                                subDivider
+                                subMacroRow("Trans Fats", value: meal.transFat, color: PrecisionCalTheme.terracottaDeep)
+                            }
+                        }
+                        .padding(.top, 4)
+                        .transition(.asymmetric(
+                            insertion: .opacity.combined(with: .move(edge: .top)),
+                            removal: .opacity
+                        ))
+                    }
                 }
                 .padding(20)
             }
         }
+    }
+
+    private func subMacroRow(_ label: String, value: Double, color: Color) -> some View {
+        HStack {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(PrecisionCalTheme.textSecondary)
+            Spacer()
+            Text("\(formatG(value))g")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .foregroundStyle(PrecisionCalTheme.textPrimary)
+        }
+        .padding(.vertical, 9)
+    }
+
+    private var subDivider: some View {
+        Rectangle()
+            .fill(PrecisionCalTheme.glassStroke.opacity(0.4))
+            .frame(height: 1)
+    }
+
+    // MARK: - Card 3 — Clinical Micronutrient Matrix
+
+    private var micronutrientMatrixCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionLabel("Clinical Micronutrient Matrix")
+            GlassCard {
+                VStack(spacing: 16) {
+                    ForEach(meal.micronutrients) { nutrient in
+                        MicronutrientRow(nutrient: nutrient)
+                    }
+                }
+                .padding(20)
+            }
+        }
+    }
+
+    private func formatG(_ v: Double) -> String {
+        if v >= 10 || v == v.rounded() {
+            return String(Int(v.rounded()))
+        }
+        return String(format: "%.1f", v)
     }
 
     private var itemsList: some View {
@@ -386,6 +514,62 @@ struct MacroBar: View {
                 }
             }
             .frame(height: 8)
+        }
+    }
+}
+
+struct MicronutrientRow: View {
+    let nutrient: Micronutrient
+    @State private var appeared = false
+
+    private var clampedPct: Double { max(0, min(1, nutrient.pctDailyValue / 100)) }
+
+    private var barColor: Color {
+        if nutrient.pctDailyValue >= 75 { return PrecisionCalTheme.terracotta }
+        if nutrient.pctDailyValue >= 30 { return PrecisionCalTheme.sage }
+        return PrecisionCalTheme.hydrationColor
+    }
+
+    private var amountLabel: String {
+        let mg = nutrient.amountMg
+        if mg >= 1000 {
+            return String(format: "%.1fg", mg / 1000)
+        }
+        if mg >= 10 || mg == mg.rounded() {
+            return "\(Int(mg.rounded()))mg"
+        }
+        return String(format: "%.1fmg", mg)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(nutrient.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(PrecisionCalTheme.textSecondary)
+                Spacer()
+                Text(amountLabel)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(PrecisionCalTheme.textTertiary)
+                Text("\(Int(nutrient.pctDailyValue.rounded()))%")
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(barColor)
+                    .frame(width: 44, alignment: .trailing)
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(PrecisionCalTheme.glassStroke.opacity(0.35)).frame(height: 5)
+                    Capsule()
+                        .fill(barColor)
+                        .frame(width: geo.size.width * CGFloat(appeared ? clampedPct : 0), height: 5)
+                }
+            }
+            .frame(height: 5)
+        }
+        .onAppear {
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.85)) {
+                appeared = true
+            }
         }
     }
 }

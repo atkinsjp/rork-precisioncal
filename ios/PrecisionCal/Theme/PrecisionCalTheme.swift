@@ -29,6 +29,10 @@ enum PrecisionCalTheme {
     static let fatColor = Color(red: 0xE4 / 255, green: 0xBC / 255, blue: 0x76 / 255)    // honey
     static let hydrationColor = Color(red: 0x7A / 255, green: 0xA8 / 255, blue: 0xB8 / 255) // muted teal
 
+    // Alert / hidden-fat amber glow
+    static let amber = Color(red: 0xE0 / 255, green: 0x9F / 255, blue: 0x3E / 255)        // #E09F3E warm amber
+    static let amberDeep = Color(red: 0xB8 / 255, green: 0x76 / 255, blue: 0x1E / 255)
+
     // Backwards-compat aliases (now warm)
     static let deepSea = bgTop
     static let chalkyMint = sage
