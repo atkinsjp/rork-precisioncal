@@ -22,6 +22,12 @@ struct FirstScanFunnelView: View {
     @State private var didStartAnalysis = false
     @State private var showResultSheet = false
 
+    // Celebratory reveal animation
+    @State private var scoreProgress: Double = 0
+    @State private var displayedScore: Int = 0
+    @State private var celebrate = false
+    @State private var scoreCountTask: Task<Void, Never>?
+
     private var stage: OnboardingFunnelStage {
         OnboardingFunnelStage(rawValue: stageRaw) ?? .firstScan
     }
@@ -232,29 +238,22 @@ struct FirstScanFunnelView: View {
     // MARK: - Stage 5: Reveal
 
     private var revealScreen: some View {
-        VStack(spacing: 24) {
+        let score = funnelMeal?.mealScore ?? 0
+        return VStack(spacing: 24) {
             Spacer()
 
-            ZStack {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [PrecisionCalTheme.sage.opacity(0.5), PrecisionCalTheme.sage.opacity(0)],
-                            center: .center, startRadius: 6, endRadius: 110
-                        )
-                    )
-                    .frame(width: 220, height: 220)
-                    .blur(radius: 14)
-                Image(systemName: "checkmark.seal.fill")
-                    .font(.system(size: 84))
-                    .foregroundStyle(PrecisionCalTheme.sage)
-                    .symbolEffect(.bounce, options: .nonRepeating)
-            }
+            FunnelScoreRing(
+                score: score,
+                progress: scoreProgress,
+                displayedScore: displayedScore,
+                celebrate: celebrate
+            )
 
             VStack(spacing: 12) {
-                Text("Protocol calibrated")
+                Text(scoreHeadline(for: score))
                     .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(PrecisionCalTheme.textPrimary)
+                    .multilineTextAlignment(.center)
                 Text("Your trial is active and your account is secured. Here's your first Nutritional Autopsy.")
                     .font(.system(size: 16))
                     .foregroundStyle(PrecisionCalTheme.textSecondary)
@@ -278,15 +277,50 @@ struct FirstScanFunnelView: View {
             .padding(.horizontal, 24)
             .padding(.bottom, 28)
         }
-        .onAppear {
-            // Auto-present so the reveal feels immediate after sign-in.
-            if !showResultSheet { showResultSheet = true }
-        }
+        .onAppear { runScoreCelebration(score: score) }
+        .onDisappear { scoreCountTask?.cancel() }
         .sheet(isPresented: $showResultSheet, onDismiss: { setStage(.done) }) {
             if let meal = funnelMeal {
                 MealAnalysisSheet(meal: meal, quickItems: quickItems, currentPass: 6)
                     .presentationDetents([.large])
                     .presentationBackground(.clear)
+            }
+        }
+    }
+
+    private func scoreHeadline(for score: Int) -> String {
+        switch score {
+        case 80...: return "Outstanding meal"
+        case 60..<80: return "Solid meal"
+        default: return "Protocol calibrated"
+        }
+    }
+
+    /// Drives the count-up number, ring fill, confetti burst and success haptic.
+    private func runScoreCelebration(score: Int) {
+        guard scoreCountTask == nil else { return }
+        scoreProgress = 0
+        displayedScore = 0
+        celebrate = false
+
+        withAnimation(.easeOut(duration: 1.1)) {
+            scoreProgress = Double(max(0, min(100, score))) / 100.0
+        }
+
+        scoreCountTask = Task { @MainActor in
+            // Brief beat so the ring starts sweeping before the burst lands.
+            try? await Task.sleep(for: .milliseconds(120))
+            let steps = max(1, score)
+            let perStep = UInt64(1_000_000_000 / UInt64(max(1, min(60, steps))))
+            for value in 0...score {
+                if Task.isCancelled { return }
+                displayedScore = value
+                try? await Task.sleep(nanoseconds: perStep)
+            }
+            displayedScore = score
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.55)) {
+                celebrate = true
             }
         }
     }
@@ -553,5 +587,107 @@ private struct FunnelSignInScreen: View {
             }
             errorText = "Sign-in didn't complete. You can try again or continue."
         }
+    }
+}
+
+/// Celebratory meal-score ring shown on the reveal screen: an animated sweep,
+/// a count-up number, a soft success glow and a radiating confetti burst.
+private struct FunnelScoreRing: View {
+    let score: Int
+    let progress: Double
+    let displayedScore: Int
+    let celebrate: Bool
+
+    private var tint: Color {
+        switch score {
+        case 80...: return PrecisionCalTheme.sage
+        case 60..<80: return PrecisionCalTheme.fatColor
+        default: return PrecisionCalTheme.terracotta
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            // Ambient glow that blooms on completion.
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [tint.opacity(celebrate ? 0.5 : 0.28), tint.opacity(0)],
+                        center: .center, startRadius: 6, endRadius: 130
+                    )
+                )
+                .frame(width: 260, height: 260)
+                .blur(radius: 16)
+                .scaleEffect(celebrate ? 1.06 : 0.9)
+
+            ConfettiBurst(tint: tint, isActive: celebrate)
+                .frame(width: 260, height: 260)
+
+            // Track
+            Circle()
+                .stroke(tint.opacity(0.16), lineWidth: 12)
+                .frame(width: 176, height: 176)
+
+            // Progress sweep
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(
+                    tint,
+                    style: StrokeStyle(lineWidth: 12, lineCap: .round)
+                )
+                .frame(width: 176, height: 176)
+                .rotationEffect(.degrees(-90))
+                .shadow(color: tint.opacity(0.4), radius: 8, x: 0, y: 0)
+
+            VStack(spacing: 2) {
+                Text("\(displayedScore)")
+                    .font(.system(size: 56, weight: .bold, design: .rounded))
+                    .foregroundStyle(PrecisionCalTheme.textPrimary)
+                    .contentTransition(.numericText(value: Double(displayedScore)))
+                Text("MEAL SCORE")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(2.5)
+                    .foregroundStyle(tint)
+            }
+            .scaleEffect(celebrate ? 1.0 : 0.94)
+        }
+        .frame(height: 260)
+    }
+}
+
+/// Lightweight confetti: small rounded shards radiating outward on activation.
+private struct ConfettiBurst: View {
+    let tint: Color
+    let isActive: Bool
+
+    private let palette: [Color] = [
+        PrecisionCalTheme.sage,
+        PrecisionCalTheme.terracotta,
+        PrecisionCalTheme.fatColor,
+        PrecisionCalTheme.sageLight
+    ]
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<14, id: \.self) { i in
+                let angle = Double(i) / 14.0 * 2 * .pi
+                let distance: CGFloat = isActive ? 118 : 0
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(palette[i % palette.count])
+                    .frame(width: 6, height: 12)
+                    .offset(
+                        x: cos(angle) * distance,
+                        y: sin(angle) * distance
+                    )
+                    .rotationEffect(.radians(angle + (isActive ? 2.2 : 0)))
+                    .opacity(isActive ? 0.95 : 0)
+                    .scaleEffect(isActive ? 1 : 0.2)
+                    .animation(
+                        .spring(response: 0.6, dampingFraction: 0.7).delay(Double(i) * 0.012),
+                        value: isActive
+                    )
+            }
+        }
+        .allowsHitTesting(false)
     }
 }
