@@ -224,10 +224,30 @@ struct ProtocolScreen: View {
     static func clampNote(_ raw: String) -> String {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Remove a trailing sign-off line if the model added one.
-        for marker in ["In service of your wellness,", "— Cal", "- Cal", "—Cal"] {
-            if let range = text.range(of: marker, options: [.caseInsensitive, .backwards]) {
-                text = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        // Remove a trailing sign-off ONLY when it sits at the very end of the
+        // note. A global backwards search is dangerous here: markers like
+        // "— Cal" / "-cal" / "—cal" falsely match anywhere a dash precedes a word
+        // such as "calmer", "calorie", or "Calibrate", which would chop the note
+        // mid-sentence. Matching only the suffix keeps the body intact.
+        let signoffs = [
+            "in service of your wellness,",
+            "with warmth, cal",
+            "warmly, cal",
+            "— cal", "– cal", "- cal", "—cal", "–cal",
+        ]
+        var didStrip = true
+        while didStrip {
+            didStrip = false
+            let lower = text.lowercased()
+            for marker in signoffs where lower.hasSuffix(marker) {
+                text = String(text.dropLast(marker.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                didStrip = true
+                break
+            }
+            // Clean up a dangling dash left behind by a stripped sign-off.
+            while let last = text.last, last == "—" || last == "–" || last == "-" {
+                text = String(text.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+                didStrip = true
             }
         }
 
