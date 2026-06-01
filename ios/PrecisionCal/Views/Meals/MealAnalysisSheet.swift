@@ -395,18 +395,22 @@ struct AnalysisProgressBar: View {
     var body: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "sparkles")
                         .foregroundStyle(PrecisionCalTheme.terracotta)
                         .symbolEffect(.variableColor.iterative, options: .repeating)
-                    Text(passLabel)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(PrecisionCalTheme.textPrimary)
-                        .contentTransition(.opacity)
-                    Spacer()
-                    Text("Pass \(currentPass) of 6")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(PrecisionCalTheme.textTertiary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Pass \(currentPass) of 6")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(PrecisionCalTheme.textTertiary)
+                        Text(passLabel)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(PrecisionCalTheme.textPrimary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .multilineTextAlignment(.leading)
+                            .contentTransition(.opacity)
+                    }
+                    Spacer(minLength: 0)
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
