@@ -970,7 +970,52 @@ nonisolated final class AIService: Sendable {
 
     // MARK: - Networking
 
+    /// Transient failures (server 5xx, rate limit, gateway/network blips) are retried with
+    /// exponential backoff so a momentary proxy hiccup mid-pipeline never surfaces to the user.
+    private static let maxAttempts = 3
+
     private func postChat(body: [String: Any]) async throws -> String {
+        var lastError: Error = AIError.serverError(0)
+        for attempt in 0..<Self.maxAttempts {
+            do {
+                return try await postChatOnce(body: body)
+            } catch let error as AIError {
+                lastError = error
+                guard Self.isRetryable(error), attempt < Self.maxAttempts - 1 else { throw error }
+                print("[AIService] Transient \(error) — retrying (attempt \(attempt + 2)/\(Self.maxAttempts)).")
+            } catch let urlError as URLError where Self.isRetryable(urlError) {
+                lastError = urlError
+                guard attempt < Self.maxAttempts - 1 else { throw AIError.serverError(0) }
+                print("[AIService] Network \(urlError.code) — retrying (attempt \(attempt + 2)/\(Self.maxAttempts)).")
+            }
+            // Exponential backoff with jitter: ~0.6s, ~1.4s.
+            let delayMs = UInt64((attempt + 1) * 600 + Int.random(in: 0...300))
+            try? await Task.sleep(nanoseconds: delayMs * 1_000_000)
+        }
+        throw lastError
+    }
+
+    /// Whether an AIError represents a transient server-side condition worth retrying.
+    private static func isRetryable(_ error: AIError) -> Bool {
+        switch error {
+        case .rateLimited: return true
+        case .serverError(let code): return code == 0 || code >= 500
+        default: return false
+        }
+    }
+
+    /// Whether a URL-layer failure (timeout, connection drop) is worth retrying.
+    private static func isRetryable(_ error: URLError) -> Bool {
+        switch error.code {
+        case .timedOut, .networkConnectionLost, .cannotConnectToHost,
+             .dnsLookupFailed, .notConnectedToInternet, .badServerResponse:
+            return true
+        default:
+            return false
+        }
+    }
+
+    private func postChatOnce(body: [String: Any]) async throws -> String {
         guard let url = URL(string: "\(toolkitURL)/v2/vercel/v1/chat/completions") else {
             throw AIError.serverError(0)
         }
