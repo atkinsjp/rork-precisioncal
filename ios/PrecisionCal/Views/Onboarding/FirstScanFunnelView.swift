@@ -656,14 +656,17 @@ private struct FunnelScoreRing: View {
 }
 
 /// Celebratory confetti: shards launch upward/outward on activation, then arc back down
-/// under gravity while spinning and fading — a real burst that plays and clears, not a frozen frame.
+/// under gravity while spinning and fading. Driven frame-by-frame by `TimelineView` so the
+/// real per-frame opacity/position is rendered each tick — `withAnimation` can only interpolate
+/// between start/end states, which collapses a launch→peak→fade arc into nothing.
 private struct ConfettiBurst: View {
     let tint: Color
     let isActive: Bool
 
-    @State private var t: CGFloat = 0
+    @State private var startDate: Date?
 
     private let count = 20
+    private let duration: CGFloat = 1.5
     private let palette: [Color] = [
         PrecisionCalTheme.sage,
         PrecisionCalTheme.terracotta,
@@ -678,22 +681,33 @@ private struct ConfettiBurst: View {
     }
 
     var body: some View {
-        ZStack {
-            ForEach(0..<count, id: \.self) { i in
-                shard(i)
+        TimelineView(.animation) { timeline in
+            let t = progress(at: timeline.date)
+            ZStack {
+                ForEach(0..<count, id: \.self) { i in
+                    shard(i, t: t)
+                }
             }
+            .allowsHitTesting(false)
         }
-        .allowsHitTesting(false)
         .onAppear { if isActive { fire() } }
         .onChange(of: isActive) { _, active in if active { fire() } }
     }
 
     private func fire() {
-        t = 0
-        withAnimation(.easeOut(duration: 1.5)) { t = 1 }
+        startDate = Date()
     }
 
-    private func shard(_ i: Int) -> some View {
+    /// Eased 0...1 progress based on elapsed time since the burst fired.
+    private func progress(at date: Date) -> CGFloat {
+        guard let startDate else { return 0 }
+        let elapsed = CGFloat(date.timeIntervalSince(startDate))
+        let linear = max(0, min(1, elapsed / duration))
+        // easeOut: fast launch, gentle settle.
+        return 1 - pow(1 - linear, 2)
+    }
+
+    private func shard(_ i: Int, t: CGFloat) -> some View {
         let dir = rand(i, 1) * 2 - 1                 // horizontal direction -1...1
         let xSpeed = dir * (50 + rand(i, 2) * 130)   // lateral spread
         let upSpeed = 120 + rand(i, 3) * 130         // initial upward velocity
@@ -703,6 +717,7 @@ private struct ConfettiBurst: View {
         let x = xSpeed * t
         let y = -upSpeed * t + 430 * t * t           // up, then gravity pulls down
         let opacity: CGFloat = {
+            if t <= 0 { return 0 }
             if t < 0.12 { return t / 0.12 }
             if t > 0.72 { return max(0, 1 - (t - 0.72) / 0.28) }
             return 1
