@@ -26,10 +26,11 @@ nonisolated struct MealAnalysisResult: Codable, Sendable {
 
 nonisolated enum AnalysisEvent: Sendable {
     case pass1Identified(items: [String], title: String)
-    case pass2Weighed
-    case pass3Mapped
-    case pass4Synthesized
-    case pass5LipidScanned(MealAnalysisResult)
+    case pass2LipidDiscovered
+    case pass3LipidVerified
+    case pass4Weighed
+    case pass5Mapped
+    case pass6Synthesized(MealAnalysisResult)
 }
 
 nonisolated enum AIError: Error, LocalizedError, Sendable {
@@ -121,6 +122,21 @@ nonisolated struct Pass5Adjustment: Codable, Sendable {
 nonisolated struct Pass5Output: Codable, Sendable {
     let adjustments: [Pass5Adjustment]
     let summaryNote: String?
+}
+
+/// Pass 2 — Lipid Sheen Discovery: a wide-angle surface-physics scan that flags
+/// candidate regions exhibiting oil/butter reflectivity for the macro-zoom pass to verify.
+nonisolated struct LipidCandidate: Codable, Sendable {
+    let name: String
+    let sheenSuspected: Bool
+    /// Approximate target region/coordinates for the Pass 3 macro-zoom (e.g. "center-left, top of chicken").
+    let region: String?
+    let reflectivityNote: String?
+}
+
+nonisolated struct LipidDiscoveryOutput: Codable, Sendable {
+    let candidates: [LipidCandidate]
+    let note: String?
 }
 
 nonisolated final class AIService: Sendable {
@@ -394,7 +410,7 @@ nonisolated final class AIService: Sendable {
         return out
     }
 
-    // MARK: - 4-Pass Sequential Chain
+    // MARK: - 6-Pass Sequential Chain
 
     func analyzeChain(
         imageData: Data,
@@ -402,58 +418,69 @@ nonisolated final class AIService: Sendable {
     ) async throws -> MealAnalysisResult {
         let base64 = try resizeForUpload(imageData: imageData, maxBytes: 1_400_000)
 
-        // Pass 1 — Vision: identify items. If this fails entirely, fall back to single-shot.
+        // Pass 1 — Isolation (Vision): enumerate and isolate every food item. Fall back if it fails.
         let p1: Pass1Output
         do {
             p1 = try await runPass1(base64: base64)
         } catch {
-            print("[AIService] Pass1 failed (\(error)) — falling back to single-shot analysis.")
+            print("[AIService] Pass1 (Isolation) failed (\(error)) — falling back to single-shot analysis.")
             return try await singleShotFallback(base64: base64, onProgress: onProgress)
         }
         guard !p1.items.isEmpty else {
-            print("[AIService] Pass1 returned no items — falling back to single-shot analysis.")
+            print("[AIService] Pass1 (Isolation) returned no items — falling back to single-shot analysis.")
             return try await singleShotFallback(base64: base64, onProgress: onProgress)
         }
         let title = (p1.title?.isEmpty == false ? p1.title! : defaultTitle(from: p1.items))
         onProgress(.pass1Identified(items: p1.items.map { $0.name }, title: title))
 
-        // Pass 2 — Vision: dimensional weight estimation. Fall back if it fails.
+        // Pass 2 — Lipid Sheen Discovery (Vision): wide-angle surface-physics reflectivity scan.
+        // Best-effort: a failure degrades gracefully but still advances the pipeline.
+        let discovery = (try? await runLipidDiscovery(base64: base64, p1: p1))
+            ?? LipidDiscoveryOutput(candidates: [], note: nil)
+        onProgress(.pass2LipidDiscovered)
+
+        // Pass 3 — High-Res Macro-Zoom Verification (Vision): magnified micro-texture/viscosity
+        // check targeting the candidate regions surfaced by Pass 2. Best-effort.
+        let lipid = (try? await runLipidVerification(base64: base64, p1: p1, discovery: discovery))
+            ?? Pass5Output(adjustments: [], summaryNote: nil)
+        onProgress(.pass3LipidVerified)
+
+        // Pass 4 — Dimensional (Vision): spatial volume + gram estimation. Fall back if it fails.
         let p2: Pass2Output
         do {
             p2 = try await runPass2(base64: base64, p1: p1)
         } catch {
-            print("[AIService] Pass2 failed (\(error)) — falling back to single-shot.")
+            print("[AIService] Pass4 (Dimensional) failed (\(error)) — falling back to single-shot.")
             return try await singleShotFallback(base64: base64, onProgress: onProgress)
         }
-        onProgress(.pass2Weighed)
+        onProgress(.pass4Weighed)
 
-        // Pass 3 — Text-only USDA mapping
+        // Pass 5 — Comparison (Data Mapping): cross-reference against USDA / verified databases.
         let p3: Pass3Output
         do {
             p3 = try await runPass3(p1: p1, p2: p2)
         } catch {
-            print("[AIService] Pass3 failed (\(error)) — falling back to single-shot.")
+            print("[AIService] Pass5 (Comparison) failed (\(error)) — falling back to single-shot.")
             return try await singleShotFallback(base64: base64, onProgress: onProgress)
         }
-        onProgress(.pass3Mapped)
+        onProgress(.pass5Mapped)
 
-        // Pass 4 — Text-only QC + synthesis
+        // Pass 6 — Synthesis (Cognitive): senior QC consolidates every layer into the final report.
         let p4: Pass4Output
         do {
             p4 = try await runPass4(p1: p1, p3: p3)
         } catch {
-            print("[AIService] Pass4 failed (\(error)) — falling back to single-shot.")
+            print("[AIService] Pass6 (Synthesis) failed (\(error)) — falling back to single-shot.")
             return try await singleShotFallback(base64: base64, onProgress: onProgress)
         }
         guard !p4.items.isEmpty else {
-            print("[AIService] Pass4 returned no items — falling back to single-shot.")
+            print("[AIService] Pass6 (Synthesis) returned no items — falling back to single-shot.")
             return try await singleShotFallback(base64: base64, onProgress: onProgress)
         }
-        onProgress(.pass4Synthesized)
 
-        // Pass 5 — Vision: magnified lipid-sheen detection per food item (optional)
-        let p5 = (try? await runPass5(base64: base64, p4: p4)) ?? Pass5Output(adjustments: [], summaryNote: nil)
-
+        // Consolidate the verified lipid adjustments (discovered in Pass 2, confirmed in Pass 3)
+        // into the final synthesized payload.
+        let p5 = lipid
         let finalTitle = (p4.title?.isEmpty == false ? p4.title! : title)
         let mergedItems: [MealAnalysisResult.Item] = p4.items.map { item in
             let adj = p5.adjustments.first { matchName($0.name, item.name) && $0.lipidSheenDetected }
@@ -488,11 +515,12 @@ nonisolated final class AIService: Sendable {
             lipidSheenDetected: sheenDetected,
             lipidNote: p5.summaryNote ?? ""
         )
-        onProgress(.pass5LipidScanned(result))
+        onProgress(.pass6Synthesized(result))
         return result
     }
 
-    /// Fallback: ask the model to produce the full report in one shot. Used when the 5-pass chain fails.
+    /// Fallback: ask the model to produce the full report in one shot. Used when the 6-pass chain fails.
+    /// Still sequences across all 6 events so the UI advances cleanly from 1 → 6.
     private func singleShotFallback(
         base64: String,
         onProgress: @escaping @Sendable (AnalysisEvent) -> Void
@@ -500,10 +528,11 @@ nonisolated final class AIService: Sendable {
         let result = try await runFullAnalysis(base64: base64) { items, title in
             onProgress(.pass1Identified(items: items, title: title))
         }
-        onProgress(.pass2Weighed)
-        onProgress(.pass3Mapped)
-        onProgress(.pass4Synthesized)
-        onProgress(.pass5LipidScanned(result))
+        onProgress(.pass2LipidDiscovered)
+        onProgress(.pass3LipidVerified)
+        onProgress(.pass4Weighed)
+        onProgress(.pass5Mapped)
+        onProgress(.pass6Synthesized(result))
         return result
     }
 
@@ -675,21 +704,54 @@ nonisolated final class AIService: Sendable {
         return try decode(Pass3Output.self, from: raw)
     }
 
-    private func runPass5(base64: String, p4: Pass4Output) async throws -> Pass5Output {
-        struct Pass5Hint: Encodable { let name: String; let preparation: String; let grams: Double; let fat: Double }
-        let hints = p4.items.map { Pass5Hint(name: $0.name, preparation: $0.preparation, grams: $0.grams, fat: $0.fat) }
-        let itemsJSON = (try? String(data: JSONEncoder().encode(hints), encoding: .utf8)) ?? "[]"
+    /// Pass 2 — Lipid Sheen Discovery (Vision): a wide-angle surface-physics pass that scans the
+    /// whole plate for general oil/butter reflectivity anomalies and flags candidate regions.
+    private func runLipidDiscovery(base64: String, p1: Pass1Output) async throws -> LipidDiscoveryOutput {
+        let names = p1.items.map { $0.name }
+        let itemsJSON = (try? String(data: JSONEncoder().encode(names), encoding: .utf8)) ?? "[]"
         let system = """
-        You are PrecisionCal Pass 5 (Lipid Sheen Detection). Visually re-examine the photo at slightly increased magnification, food item by food item.
-        Goal: detect a LIPID SHEEN — visible glossy oil/butter/fat reflectance — on or around any item. Specular highlights, pooled liquid fat, glistening surfaces, oil droplets, and greasy translucency all count.
-        For each item, decide if a sheen is present. If yes, infer the most likely fat in the context of that food's typical preparation:
-        - fried/sauteed proteins → likely vegetable/seed oil (~5–15g per serving) or butter
+        You are PrecisionCal Pass 2 (Lipid Sheen Discovery). Perform a WIDE-ANGLE surface-physics scan of the entire plate.
+        Goal: locate every region that exhibits a possible LIPID SHEEN — glossy oil/butter/fat reflectance, specular highlights, pooled liquid fat, glistening surfaces, oil droplets, or greasy translucency.
+        This is a broad reconnaissance pass: do NOT estimate fat grams yet. Simply flag which items/regions look reflective and worth a magnified inspection in the next pass.
+        For each flagged item, give an approximate target region/coordinates (e.g. "top-center of the chicken", "pooled at lower-right of the bowl") so the macro-zoom pass can target it.
+        Items identified on the plate: \(itemsJSON).
+        Return STRICT JSON only:
+        {"candidates":[{"name":"...","sheenSuspected":true|false,"region":"short location description","reflectivityNote":"what looks glossy/oily"}],"note":"one short sentence summarizing reflective regions or empty"}
+        """
+        let body: [String: Any] = [
+            "model": model,
+            "messages": [
+                ["role": "system", "content": system],
+                ["role": "user", "content": [
+                    ["type": "text", "text": "Scan the whole plate for oil/butter reflectivity and flag candidate regions for magnified verification."],
+                    ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
+                ]],
+            ],
+            "temperature": 0.1,
+            "max_tokens": 2048,
+        ]
+        let raw = try await postChat(body: body)
+        return try decode(LipidDiscoveryOutput.self, from: raw)
+    }
+
+    /// Pass 3 — High-Res Macro-Zoom Verification (Vision): targets the candidate regions from Pass 2
+    /// and executes a magnified micro-texture/viscosity check to confirm lipids and estimate added fat.
+    private func runLipidVerification(base64: String, p1: Pass1Output, discovery: LipidDiscoveryOutput) async throws -> Pass5Output {
+        let candidatesJSON = (try? String(data: JSONEncoder().encode(discovery.candidates), encoding: .utf8)) ?? "[]"
+        let prepHints = p1.items.map { ["name": $0.name, "preparation": $0.preparation] }
+        let prepJSON = (try? JSONSerialization.data(withJSONObject: prepHints)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        let system = """
+        You are PrecisionCal Pass 3 (High-Res Macro-Zoom Verification). The discovery pass (Pass 2) flagged candidate regions that may carry a lipid sheen. Mentally MAGNIFY each flagged target region and run a micro-texture / viscosity check to confirm whether real glossy oil/butter/fat is present.
+        Confirm or reject each candidate: specular highlights, pooled liquid fat, droplet viscosity, and greasy translucency confirm a sheen; matte/dry surfaces or plain moisture do NOT.
+        For each CONFIRMED item, infer the most likely fat from the food's typical preparation and estimate the added amount:
+        - fried/sauteed proteins → vegetable/seed oil (~5–15g per serving) or butter
         - roasted vegetables with gloss → olive or vegetable oil (~3–10g per serving)
         - pasta/rice with gloss → butter, olive oil, or sauce-fat (~4–10g per serving)
         - greens with sheen → dressing oil (~3–8g per serving)
         - bread with sheen → butter or oil brush (~3–8g per serving)
-        Maintain at least the same confidence (0–100%) as the base estimate; do not over-add. If no sheen, set lipidSheenDetected=false and zero added values.
-        Items previously analyzed: \(itemsJSON).
+        Do not over-add. If a candidate is not confirmed, set lipidSheenDetected=false and zero added values.
+        Candidate regions from Pass 2: \(candidatesJSON).
+        Preparation context: \(prepJSON).
         Return STRICT JSON only:
         {"adjustments":[{"name":"...","lipidSheenDetected":true|false,"inferredFat":"olive oil|butter|vegetable oil|...|null","addedFatG":number,"addedCalories":number,"confidence":0-100}],"summaryNote":"one short sentence on lipid findings or empty"}
         """
@@ -698,7 +760,7 @@ nonisolated final class AIService: Sendable {
             "messages": [
                 ["role": "system", "content": system],
                 ["role": "user", "content": [
-                    ["type": "text", "text": "Magnify mentally and check each item for lipid sheen. Return adjustments JSON."],
+                    ["type": "text", "text": "Macro-zoom each flagged region, confirm the lipid sheen, and return the verified adjustments JSON."],
                     ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
                 ]],
             ],

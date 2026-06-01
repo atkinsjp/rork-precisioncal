@@ -276,7 +276,7 @@ struct AnalysisProgressBar: View {
                         .foregroundStyle(PrecisionCalTheme.textPrimary)
                         .contentTransition(.opacity)
                     Spacer()
-                    Text("Pass \(currentPass) of 5")
+                    Text("Pass \(currentPass) of 6")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(PrecisionCalTheme.textTertiary)
                 }
@@ -285,7 +285,7 @@ struct AnalysisProgressBar: View {
                         Capsule().fill(PrecisionCalTheme.glassStroke.opacity(0.5)).frame(height: 4)
                         Capsule()
                             .fill(LinearGradient(colors: [PrecisionCalTheme.terracotta, PrecisionCalTheme.fatColor], startPoint: .leading, endPoint: .trailing))
-                            .frame(width: geo.size.width * CGFloat(currentPass) / 5, height: 4)
+                            .frame(width: geo.size.width * CGFloat(currentPass) / 6, height: 4)
                             .animation(.spring(response: 0.6, dampingFraction: 0.85), value: currentPass)
                     }
                 }
@@ -297,11 +297,12 @@ struct AnalysisProgressBar: View {
 
     private var passLabel: String {
         switch currentPass {
-        case 1: return "Isolation + Zoom: items, texture, prep"
-        case 2: return "Dimensional: 3D volume from depth cues"
-        case 3: return "Comparison: cross-referencing serving DB"
-        case 4: return "Synthesis: comprehensive profile"
-        default: return "Lipid sheen: detecting hidden fats"
+        case 1: return "Isolation: enumerating every item"
+        case 2: return "Lipid discovery: surface reflectivity scan"
+        case 3: return "Macro-zoom: magnified texture & viscosity"
+        case 4: return "Dimensional: 3D volume from depth cues"
+        case 5: return "Comparison: cross-referencing USDA DB"
+        default: return "Synthesis: final verified profile"
         }
     }
 }

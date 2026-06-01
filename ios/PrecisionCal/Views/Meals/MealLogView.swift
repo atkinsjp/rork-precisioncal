@@ -41,7 +41,7 @@ struct MealLogView: View {
                         ForEach(meals) { meal in
                             Button {
                                 quickItems = []
-                                currentPass = 4
+                                currentPass = 6
                                 activeMeal = meal
                             } label: {
                                 MealRow(meal: meal)
@@ -216,13 +216,15 @@ struct MealLogView: View {
                             quickItems = items
                             if meal.title.isEmpty { meal.title = title }
                             currentPass = 2
-                        case .pass2Weighed:
+                        case .pass2LipidDiscovered:
                             currentPass = 3
-                        case .pass3Mapped:
+                        case .pass3LipidVerified:
                             currentPass = 4
-                        case .pass4Synthesized:
+                        case .pass4Weighed:
                             currentPass = 5
-                        case .pass5LipidScanned:
+                        case .pass5Mapped:
+                            currentPass = 6
+                        case .pass6Synthesized:
                             break
                         }
                     }
