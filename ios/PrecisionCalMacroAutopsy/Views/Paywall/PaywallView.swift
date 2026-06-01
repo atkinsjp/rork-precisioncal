@@ -1,0 +1,594 @@
+import SwiftUI
+import RevenueCat
+
+/// Framing variants for the paywall. `.postAnalysis` is used right after the
+/// onboarding 6-pass analysis completes and presents a frictionless, free-trial
+/// activation step; `.standard` is the general upgrade screen.
+enum PaywallContext {
+    case standard
+    case postAnalysis
+}
+
+struct PaywallView: View {
+    var store: StoreViewModel
+    /// When true, the paywall cannot be dismissed (no close button) — the user
+    /// must subscribe (or restore) to continue using the app.
+    var isMandatory: Bool = false
+    var context: PaywallContext = .standard
+    var onDismiss: (() -> Void)? = nil
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @State private var selectedPackageID: String?
+    @State private var legalSheet: LegalDocumentView.Kind? = nil
+
+    private var packages: [Package] {
+        guard let current = store.offerings?.current else { return [] }
+        // Order: yearly, monthly, weekly when available
+        let order: [PackageType] = [.annual, .monthly, .weekly, .twoMonth, .threeMonth, .sixMonth, .lifetime]
+        let known = order.compactMap { type in current.availablePackages.first(where: { $0.packageType == type }) }
+        let extras = current.availablePackages.filter { !known.contains($0) }
+        return known + extras
+    }
+
+    private var selectedPackage: Package? {
+        packages.first(where: { $0.identifier == selectedPackageID }) ?? packages.first
+    }
+
+    private func close() {
+        if let onDismiss { onDismiss() } else { dismiss() }
+    }
+
+    var body: some View {
+        ZStack {
+            MeshBackground().ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    hero
+                        .padding(.top, 24)
+                        .padding(.bottom, 28)
+
+                    benefits
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 22)
+
+                    if store.isLoading && packages.isEmpty {
+                        VStack(spacing: 14) {
+                            BreathingOrb(size: 56)
+                            Text("Loading plans…")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                    } else if packages.isEmpty {
+                        ContentUnavailableView(
+                            "Plans unavailable",
+                            systemImage: "exclamationmark.triangle",
+                            description: Text("Please try again in a moment.")
+                        )
+                        .padding(.vertical, 40)
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(packages, id: \.identifier) { pkg in
+                                packageRow(pkg)
+                            }
+                        }
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 18)
+                    }
+
+                    purchaseButton
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, context == .postAnalysis ? 10 : 14)
+
+                    if context == .postAnalysis, let caption = trialComplianceCaption {
+                        Text(caption)
+                            .font(.system(size: 11))
+                            .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(2)
+                            .padding(.horizontal, 26)
+                            .padding(.bottom, 16)
+                    }
+
+                    footer
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 36)
+                }
+            }
+            .scrollIndicators(.hidden)
+        }
+        .overlay(alignment: .topTrailing) {
+            if !isMandatory {
+                Button {
+                    close()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(PrecisionCalMacroAutopsyTheme.glassStroke, lineWidth: 1))
+                }
+                .padding(.top, 12)
+                .padding(.trailing, 16)
+            }
+        }
+        .sheet(item: $legalSheet) { kind in
+            LegalDocumentView(kind: kind)
+        }
+        .alert("Something went wrong", isPresented: .init(
+            get: { store.error != nil },
+            set: { if !$0 { store.error = nil } }
+        )) {
+            Button("OK") { store.error = nil }
+        } message: {
+            Text(store.error ?? "")
+        }
+        .onChange(of: store.isPremium) { _, isPremium in
+            if isPremium { close() }
+        }
+        .onAppear {
+            if selectedPackageID == nil {
+                // Prefer yearly default
+                selectedPackageID = packages.first(where: { $0.packageType == .annual })?.identifier
+                    ?? packages.first?.identifier
+            }
+        }
+        .onChange(of: packages.map(\.identifier)) { _, ids in
+            if selectedPackageID == nil || !(ids.contains(selectedPackageID ?? "")) {
+                selectedPackageID = ids.first(where: { id in
+                    packages.first(where: { $0.identifier == id })?.packageType == .annual
+                }) ?? ids.first
+            }
+        }
+    }
+
+    // MARK: - Hero
+
+    private var hero: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [PrecisionCalMacroAutopsyTheme.terracotta.opacity(0.45), PrecisionCalMacroAutopsyTheme.terracotta.opacity(0)],
+                            center: .center, startRadius: 4, endRadius: 90
+                        )
+                    )
+                    .frame(width: 180, height: 180)
+                    .blur(radius: 18)
+
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [PrecisionCalMacroAutopsyTheme.terracotta, PrecisionCalMacroAutopsyTheme.terracottaDeep],
+                            startPoint: .topLeading, endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 88, height: 88)
+                    .overlay {
+                        Circle().stroke(Color.white.opacity(0.4), lineWidth: 1)
+                    }
+                    .shadow(color: PrecisionCalMacroAutopsyTheme.terracotta.opacity(0.4), radius: 20, x: 0, y: 12)
+
+                Image(systemName: "sparkles")
+                    .font(.system(size: 38, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .symbolEffect(.pulse, options: .repeating)
+            }
+
+            VStack(spacing: 6) {
+                Text(context == .postAnalysis ? "6-PASS PIPELINE" : "PRECISIONCAL PRO")
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(3)
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+
+                Text(context == .postAnalysis ? "6-Pass Analysis\nComplete" : "Unlock your full\ncalibration")
+                    .font(.system(size: 32, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                    .lineSpacing(2)
+
+                Text(context == .postAnalysis
+                     ? "Start your 3-Day Free Trial to unlock your first Nutritional Autopsy and activate your personalized PhD Protocol."
+                     : "AI-personalized nutrition, weekly recalibration & deep insights.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    // MARK: - Benefits
+
+    @ViewBuilder
+    private var benefits: some View {
+        if context == .postAnalysis {
+            postAnalysisBenefits
+        } else {
+            standardBenefits
+        }
+    }
+
+    private var postAnalysisBenefits: some View {
+        VStack(spacing: 12) {
+            EmojiBenefitRow(
+                emoji: "🔓",
+                text: "Immediate access to today's Hidden Fat & Lipid Sheen breakdown."
+            )
+            EmojiBenefitRow(
+                emoji: "🧪",
+                text: "24/7 Unlimited access to your personal PhD AI Nutritionist."
+            )
+            EmojiBenefitRow(
+                emoji: "📉",
+                text: "Zero risk. Cancel anytime before Day 3."
+            )
+        }
+    }
+
+    private var standardBenefits: some View {
+        VStack(spacing: 10) {
+            BenefitRow(
+                icon: "wand.and.stars",
+                title: "Unlimited AI scans",
+                subtitle: "Identify any meal or product in a snap."
+            )
+            BenefitRow(
+                icon: "arrow.triangle.2.circlepath",
+                title: "Sunday Calibration",
+                subtitle: "Weekly protocol pivots tuned to your data."
+            )
+            BenefitRow(
+                icon: "chart.line.uptrend.xyaxis",
+                title: "Deep trend insights",
+                subtitle: "See what's actually moving your goals."
+            )
+            BenefitRow(
+                icon: "leaf.fill",
+                title: "Personalized protocol",
+                subtitle: "Adapts to your goals, allergies & meds."
+            )
+        }
+    }
+
+    // MARK: - Package row
+
+    private func packageRow(_ package: Package) -> some View {
+        let isSelected = (selectedPackageID ?? packages.first?.identifier) == package.identifier
+        let title = displayTitle(for: package)
+        let priceText = package.storeProduct.localizedPriceString
+        let perUnit = perUnitString(for: package)
+        let savings = savingsString(for: package)
+
+        return Button {
+            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            selectedPackageID = package.identifier
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? PrecisionCalMacroAutopsyTheme.terracotta : PrecisionCalMacroAutopsyTheme.glassStroke, lineWidth: 2)
+                        .frame(width: 22, height: 22)
+                    if isSelected {
+                        Circle()
+                            .fill(PrecisionCalMacroAutopsyTheme.terracotta)
+                            .frame(width: 12, height: 12)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                        if let savings {
+                            Text(savings)
+                                .font(.system(size: 10, weight: .bold))
+                                .tracking(0.6)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(PrecisionCalMacroAutopsyTheme.sage))
+                        }
+                    }
+                    if let perUnit {
+                        Text(perUnit)
+                            .font(.system(size: 12))
+                            .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                    }
+                }
+
+                Spacer()
+
+                Text(priceText)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+            }
+            .padding(.vertical, 16)
+            .padding(.horizontal, 18)
+            .background {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(isSelected ? PrecisionCalMacroAutopsyTheme.terracotta.opacity(0.10) : Color.white.opacity(0.55))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(
+                                isSelected ? PrecisionCalMacroAutopsyTheme.terracotta : PrecisionCalMacroAutopsyTheme.glassStroke,
+                                lineWidth: isSelected ? 1.6 : 1
+                            )
+                    }
+            }
+        }
+        .buttonStyle(.plain)
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: isSelected)
+    }
+
+    // MARK: - Purchase button
+
+    private var purchaseButton: some View {
+        PearlescentButton {
+            guard let pkg = selectedPackage else { return }
+            Task { await store.purchase(package: pkg) }
+        } label: {
+            HStack(spacing: 10) {
+                if store.isPurchasing {
+                    ProgressView().tint(.white).scaleEffect(0.9)
+                }
+                Text(store.isPurchasing ? "Processing…" : ctaLabel)
+                    .font(.system(size: 16, weight: .bold))
+                    .tracking(0.5)
+                    .foregroundStyle(.white)
+            }
+        }
+        .disabled(store.isPurchasing || selectedPackage == nil)
+        .opacity(selectedPackage == nil ? 0.5 : 1)
+    }
+
+    private var ctaLabel: String {
+        if let pkg = selectedPackage,
+           let intro = pkg.storeProduct.introductoryDiscount,
+           intro.price == 0 {
+            // User-facing CTA is intentionally catchy and plan-agnostic — the free
+            // trial length & billing terms are fully disclosed in the footer.
+            return context == .postAnalysis ? "Start My 3-Day Free Trial" : "Start Free Trial"
+        }
+        return "Continue"
+    }
+
+    /// Compliance micro-copy shown directly beneath the CTA in the post-analysis
+    /// context. Reflects the real selected plan price and free-trial length.
+    private var trialComplianceCaption: String? {
+        guard let pkg = selectedPackage else { return nil }
+        let price = pkg.storeProduct.localizedPriceString
+        let period = compactPeriodLabel(for: pkg)
+        let symbol = currencySymbol(pkg)
+        let zero = symbol.isEmpty ? "$0.00" : "\(symbol)0.00"
+        guard let intro = pkg.storeProduct.introductoryDiscount, intro.price == 0 else {
+            // No free trial on this plan — keep the disclosure honest.
+            return "\(price)/\(period). Auto-renews until cancelled. Easily cancel in your Apple Account settings at least 24 hours before renewal."
+        }
+        let v = intro.subscriptionPeriod.value
+        let unit = pluralUnit(intro.subscriptionPeriod.unit, value: v)
+        return "Today: \(zero). After \(v) \(unit): \(price)/\(period). Easily cancel in your Apple Account settings at least 24 hours before the trial ends."
+    }
+
+    private func compactPeriodLabel(for package: Package) -> String {
+        switch package.packageType {
+        case .annual: return "year"
+        case .sixMonth: return "6 months"
+        case .threeMonth: return "3 months"
+        case .twoMonth: return "2 months"
+        case .monthly: return "month"
+        case .weekly: return "week"
+        case .lifetime: return "once"
+        default: return "period"
+        }
+    }
+
+    private func pluralUnit(_ unit: SubscriptionPeriod.Unit, value: Int) -> String {
+        switch unit {
+        case .day: return value == 1 ? "day" : "days"
+        case .week: return value == 1 ? "week" : "weeks"
+        case .month: return value == 1 ? "month" : "months"
+        case .year: return value == 1 ? "year" : "years"
+        }
+    }
+
+    // MARK: - Footer
+
+    private var subscriptionDisclosure: String {
+        guard let pkg = selectedPackage else {
+            return "Subscription auto-renews until cancelled. Cancel anytime at least 24 hours before the end of the current period in your Apple ID Settings → Subscriptions. Payment will be charged to your Apple ID at confirmation of purchase."
+        }
+        let title = displayTitle(for: pkg)
+        let price = pkg.storeProduct.localizedPriceString
+        let periodLabel: String = {
+            switch pkg.packageType {
+            case .annual: return "year"
+            case .sixMonth: return "6 months"
+            case .threeMonth: return "3 months"
+            case .twoMonth: return "2 months"
+            case .monthly: return "month"
+            case .weekly: return "week"
+            case .lifetime: return ""
+            default: return ""
+            }
+        }()
+        let trial: String = {
+            guard let intro = pkg.storeProduct.introductoryDiscount, intro.price == 0 else { return "" }
+            let v = intro.subscriptionPeriod.value
+            let u = unitString(intro.subscriptionPeriod.unit, value: v)
+            return "After your \(v)-\(u) free trial, "
+        }()
+        if pkg.packageType == .lifetime {
+            return "\(title) is a one-time purchase of \(price). Payment will be charged to your Apple ID at confirmation of purchase."
+        }
+        return "\(trial)\(title) PrecisionCalMacroAutopsy Pro is \(price) per \(periodLabel) and auto-renews until cancelled. Cancel anytime at least 24 hours before the end of the current period in your Apple ID Settings → Subscriptions. Payment will be charged to your Apple ID at confirmation of purchase."
+    }
+
+    private var footer: some View {
+        VStack(spacing: 12) {
+            Button {
+                Task { await store.restore() }
+            } label: {
+                Text("Restore Purchases")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+            }
+            .disabled(store.isPurchasing)
+
+            Text(subscriptionDisclosure)
+                .font(.system(size: 11))
+                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 8)
+                .lineSpacing(2)
+
+            HStack(spacing: 6) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    legalSheet = .privacy
+                } label: {
+                    Text("Privacy Policy")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+                }
+                .buttonStyle(.plain)
+
+                Text("•")
+                    .font(.system(size: 12))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    legalSheet = .terms
+                } label: {
+                    Text("Terms of Use (EULA)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    // MARK: - Formatting helpers
+
+    private func displayTitle(for package: Package) -> String {
+        switch package.packageType {
+        case .annual: return "Yearly"
+        case .sixMonth: return "6 months"
+        case .threeMonth: return "3 months"
+        case .twoMonth: return "2 months"
+        case .monthly: return "Monthly"
+        case .weekly: return "Weekly"
+        case .lifetime: return "Lifetime"
+        default: return package.storeProduct.localizedTitle
+        }
+    }
+
+    private func perUnitString(for package: Package) -> String? {
+        let price = package.storeProduct.price as Decimal
+        switch package.packageType {
+        case .annual:
+            let monthly = (price as NSDecimalNumber).doubleValue / 12.0
+            return String(format: "%@%.2f / month", currencySymbol(package), monthly)
+        case .sixMonth:
+            let monthly = (price as NSDecimalNumber).doubleValue / 6.0
+            return String(format: "%@%.2f / month", currencySymbol(package), monthly)
+        case .threeMonth:
+            let monthly = (price as NSDecimalNumber).doubleValue / 3.0
+            return String(format: "%@%.2f / month", currencySymbol(package), monthly)
+        case .monthly:
+            return "Billed monthly"
+        case .weekly:
+            return "Billed weekly"
+        case .lifetime:
+            return "One-time purchase"
+        default:
+            return nil
+        }
+    }
+
+    private func currencySymbol(_ package: Package) -> String {
+        package.storeProduct.priceFormatter?.currencySymbol ?? ""
+    }
+
+    private func savingsString(for package: Package) -> String? {
+        guard package.packageType == .annual,
+              let monthly = packages.first(where: { $0.packageType == .monthly }) else { return nil }
+        let yearlyPrice = (package.storeProduct.price as NSDecimalNumber).doubleValue
+        let monthlyPrice = (monthly.storeProduct.price as NSDecimalNumber).doubleValue
+        guard monthlyPrice > 0, yearlyPrice > 0 else { return nil }
+        let normalized = monthlyPrice * 12.0
+        guard normalized > yearlyPrice else { return nil }
+        let pct = Int(((normalized - yearlyPrice) / normalized * 100).rounded())
+        guard pct > 0 else { return nil }
+        return "SAVE \(pct)%"
+    }
+
+    private func unitString(_ unit: SubscriptionPeriod.Unit, value: Int) -> String {
+        switch unit {
+        case .day: return value == 1 ? "day" : "day"
+        case .week: return value == 1 ? "week" : "week"
+        case .month: return value == 1 ? "month" : "month"
+        case .year: return value == 1 ? "year" : "year"
+        }
+    }
+}
+
+private struct EmojiBenefitRow: View {
+    let emoji: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Text(emoji)
+                .font(.system(size: 20))
+                .frame(width: 40, height: 40)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(PrecisionCalMacroAutopsyTheme.terracotta.opacity(0.12))
+                }
+            Text(text)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+private struct BenefitRow: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(PrecisionCalMacroAutopsyTheme.terracotta.opacity(0.14))
+                    .frame(width: 40, height: 40)
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+            }
+            Spacer()
+        }
+    }
+}
