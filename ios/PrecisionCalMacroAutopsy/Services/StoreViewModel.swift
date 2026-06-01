@@ -5,7 +5,7 @@ import RevenueCat
 @Observable
 @MainActor
 final class StoreViewModel {
-    static let entitlementID = "PrecisionCalMacroAutopsy Pro"
+    static let entitlementID = "PrecisionCal Pro"
     private static let ownerOverrideKey = "ownerModeUnlocked"
 
     var offerings: Offerings?
