@@ -501,9 +501,17 @@ nonisolated final class AIService: Sendable {
         // into the final synthesized payload.
         let p5 = lipid
         let finalTitle = (p4.title?.isEmpty == false ? p4.title! : title)
+
+        // STRUCTURAL INTEGRITY GUARDRAIL:
+        // Downstream passes (weighing → USDA mapping → synthesis) occasionally drop sides or
+        // zero-out carbohydrate macros on identified starches/vegetables. Reconcile the
+        // synthesized items back against the canonical Pass 1 enumeration: re-attach any
+        // dropped item from baseline values, and backfill 0-carb/0-fiber/0-sugar plant foods.
+        let reconciledItems = reconcileItems(p1Items: p1.items, weights: p2.items, mapped: p4.items)
+
         // Integrity: 1g of detected hidden fat == 9 kcal. We derive calories from grams
         // (never trusting the model's kcal) so totals stay perfectly synchronized.
-        let mergedItems: [MealAnalysisResult.Item] = p4.items.map { item in
+        let mergedItems: [MealAnalysisResult.Item] = reconciledItems.map { item in
             let adj = p5.adjustments.first { matchName($0.name, item.name) && $0.lipidSheenDetected }
             let addedFat = max(0, adj?.addedFatG ?? 0)
             let addedKcal = (addedFat * 9).rounded()
@@ -593,6 +601,100 @@ nonisolated final class AIService: Sendable {
         return na.contains(nb) || nb.contains(na)
     }
 
+    // MARK: - Structural integrity (item reconciliation & macro backfill)
+
+    /// Round to one decimal place.
+    private func round1(_ v: Double) -> Double { (v * 10).rounded() / 10 }
+
+    /// Reconcile the synthesized nutrition items against the canonical Pass 1 enumeration so
+    /// that no identified item is silently dropped and no plant/starch item renders 0 carbs.
+    private func reconcileItems(
+        p1Items: [Pass1Item],
+        weights: [Pass2Item],
+        mapped: [Pass3Item]
+    ) -> [MealAnalysisResult.Item] {
+        var output: [MealAnalysisResult.Item] = []
+        var consumed = [Bool](repeating: false, count: mapped.count)
+
+        for p1 in p1Items {
+            var matchIdx: Int? = nil
+            for i in mapped.indices where !consumed[i] {
+                if matchName(mapped[i].name, p1.name) { matchIdx = i; break }
+            }
+            if let i = matchIdx {
+                consumed[i] = true
+                output.append(backfill(item: mapped[i], name: p1.name, category: p1.category))
+            } else {
+                // Item enumerated in Pass 1 but dropped by the nutrition passes — rebuild it.
+                let grams = weights.first { matchName($0.name, p1.name) }?.estimatedWeightG
+                    ?? FoodBaseline.defaultGrams(category: p1.category)
+                print("[AIService] Reconcile: re-attaching dropped item '\(p1.name)' (\(Int(grams))g) from baseline.")
+                output.append(baselineItem(name: p1.name, preparation: p1.preparation, grams: grams, category: p1.category))
+            }
+        }
+        // Preserve any mapped item that didn't match a Pass 1 entry (rare).
+        for i in mapped.indices where !consumed[i] {
+            output.append(backfill(item: mapped[i], name: mapped[i].name, category: nil))
+        }
+        return output.isEmpty ? mapped.map { backfill(item: $0, name: $0.name, category: nil) } : output
+    }
+
+    /// Convert a mapped nutrition item into a final item, backfilling zeroed carbohydrate macros
+    /// for plant/starch/fruit/sauce foods from USDA baseline values (calories kept in sync at 4 kcal/g).
+    private func backfill(item: Pass3Item, name: String, category: String?) -> MealAnalysisResult.Item {
+        var carbs = item.carbs
+        var fiber = item.fiber
+        var sugar = item.sugar
+        var calories = item.calories
+
+        if FoodBaseline.carriesCarbs(name: name, category: category) {
+            let profile = FoodBaseline.profile(forName: name, category: category)
+            let grams = item.grams > 0 ? item.grams : FoodBaseline.defaultGrams(category: category)
+            let factor = grams / 100
+            if carbs <= 0, profile.carbPer100 > 0 {
+                let newCarbs = (profile.carbPer100 * factor).rounded()
+                calories += max(0, newCarbs - carbs) * 4
+                carbs = newCarbs
+            }
+            if fiber <= 0, profile.fiberPer100 > 0 { fiber = round1(profile.fiberPer100 * factor) }
+            if sugar <= 0, profile.sugarPer100 > 0 { sugar = round1(profile.sugarPer100 * factor) }
+            // Sugar + fiber cannot exceed total carbs.
+            if sugar > carbs { sugar = carbs }
+        }
+
+        return MealAnalysisResult.Item(
+            name: item.name,
+            preparation: item.preparation,
+            grams: item.grams,
+            calories: calories,
+            protein: item.protein,
+            carbs: carbs,
+            fat: item.fat,
+            fiber: fiber,
+            sugar: sugar,
+            waterMl: item.waterMl
+        )
+    }
+
+    /// Build a complete item entirely from baseline USDA values (used when a pass dropped the item).
+    private func baselineItem(name: String, preparation: String, grams: Double, category: String?) -> MealAnalysisResult.Item {
+        let profile = FoodBaseline.profile(forName: name, category: category)
+        let g = grams > 0 ? grams : 100
+        let factor = g / 100
+        return MealAnalysisResult.Item(
+            name: name,
+            preparation: preparation,
+            grams: g,
+            calories: (profile.kcalPer100 * factor).rounded(),
+            protein: round1(profile.proteinPer100 * factor),
+            carbs: (profile.carbPer100 * factor).rounded(),
+            fat: round1(profile.fatPer100 * factor),
+            fiber: round1(profile.fiberPer100 * factor),
+            sugar: round1(profile.sugarPer100 * factor),
+            waterMl: 0
+        )
+    }
+
     private func runFullAnalysis(
         base64: String,
         onItemsIdentified: @Sendable @escaping ([String], String) -> Void
@@ -631,27 +733,17 @@ nonisolated final class AIService: Sendable {
         let title = (p4.title?.isEmpty == false ? p4.title! : defaultTitle(fromItems: p4.items.map { $0.name }))
         onItemsIdentified(p4.items.map { $0.name }, title)
 
-        let totalFat = p4.items.reduce(0.0) { $0 + $1.fat }
+        // Backfill zeroed carbohydrate macros on any plant/starch item the single-shot model returned.
+        let fallbackItems = p4.items.map { backfill(item: $0, name: $0.name, category: nil) }
+
+        let totalFat = fallbackItems.reduce(0.0) { $0 + $1.fat }
         let sat = max(0, min(totalFat, p4.saturatedFatG ?? (totalFat * 0.32).rounded()))
         let trans = max(0, min(totalFat - sat, p4.transFatG ?? 0))
         let unsat = max(0, totalFat - sat - trans)
 
         return MealAnalysisResult(
             title: title,
-            items: p4.items.map {
-                MealAnalysisResult.Item(
-                    name: $0.name,
-                    preparation: $0.preparation,
-                    grams: $0.grams,
-                    calories: $0.calories,
-                    protein: $0.protein,
-                    carbs: $0.carbs,
-                    fat: $0.fat,
-                    fiber: $0.fiber,
-                    sugar: $0.sugar,
-                    waterMl: $0.waterMl
-                )
-            },
+            items: fallbackItems,
             metabolicImpact: (p4.metabolicImpact?.isEmpty == false ? p4.metabolicImpact! : "Balanced"),
             mealScore: max(0, min(100, p4.mealScore ?? 0)),
             qcNotes: p4.qcNotes ?? "",
@@ -721,6 +813,7 @@ nonisolated final class AIService: Sendable {
         Densities (g/cm³): chicken 1.05, beef 1.05, fish 1.00, rice 0.85, pasta 1.10, bread 0.30, oil 0.92, butter 0.91, leafy veg 0.30, root veg 0.65, beans 1.20, cheese 1.10, fruit 0.85.
         Cross-reference plate diameter (\(p1.plateDetails ?? "unknown")) and depth cues (\(p1.depthCues ?? "unknown")).
         Items from Pass 1: \(itemsJSON).
+        CRITICAL: Return EXACTLY ONE entry for EVERY item in the Pass 1 list above — same count, same names. NEVER merge sides into the main dish, and NEVER drop a starch, vegetable, fruit, or sauce.
         Return STRICT JSON only:
         {"items":[{"name":"...","preparation":"...","estimatedWeightG":number}],"totalWeightG":number}
         """
@@ -753,6 +846,7 @@ nonisolated final class AIService: Sendable {
         - Dairy: milk ~0 / ~5; yogurt plain ~0 / ~3.6; cheese ~0 / ~0.5.
         - Only return fiber=0 AND sugar=0 if the item is genuinely fiber/sugar-free (pure meat, pure oil/fat, pure egg white, pure broth). Plant foods returning 0 is a BUG.
 
+        ITEM CONTINUITY — MANDATORY: Return EXACTLY ONE nutrition entry for EVERY item in the weights list below — same count, same names. Never merge, collapse, or drop an item. A starch source (potato, rice, pasta, bread) MUST carry its full carbohydrate, fiber, and sugar values; never compress carbs to 0 unless the item is an isolated fat or pure protein source.
         Items with weights: \(weightsJSON).
         Return STRICT JSON only:
         {"items":[{"name":"...","preparation":"...","grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"waterMl":number}]}
@@ -847,6 +941,8 @@ nonisolated final class AIService: Sendable {
         - Adjust water content for cooking method (frying reduces water).
         - FIBER/SUGAR AUDIT: any plant food (vegetable, fruit, whole grain, legume, nut, seed, sauce with produce) MUST have non-zero fiber and/or sugar consistent with USDA. If Pass 3 returned 0 for a plant item, CORRECT it using USDA values: carrots ~2.8g fiber/100g, potato ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, lemon ~2.8g/100g, BBQ sauce ~25g sugar/100g, etc. Returning 0 fiber on a meal that contains vegetables, fruit, or starch is INCORRECT — fix it.
         - PROTEIN AUDIT: cooked chicken breast is ~31g protein per 100g. Do not over-attribute protein.
+        - ITEM CONTINUITY: Preserve EVERY item from Pass 3 — same count, same names. Never merge sides into the entrée or drop a starch/vegetable/fruit/sauce. A meal titled with potatoes/rice/carrots that returns only the protein item is a BUG.
+        - CARB INTEGRITY RULE: You must ensure the total carbohydrates, sugars, and fibers of identified starch/carb sources (e.g. potatoes, rice, pasta, bread) are mathematically present and fully represented. Never compress carbohydrate subcategories to 0 unless the item is an isolated fat or pure protein source.
         Compute:
         - mealScore (0–100): protein adequacy, fiber, sugar load, prep method, balance.
         - metabolicImpact: ONE short label like "Steady energy", "Quick spike", "Slow burn", "Recovery boost", "Light & lean".
