@@ -201,19 +201,20 @@ nonisolated final class AIService: Sendable {
     /// Returns plain prose, no markdown.
     func generateHealthProtocol(profileSummary: String) async throws -> String {
         let system = """
-        You are a PhD Nutritionist and integrative-health practitioner. Read the user's profile and write a warm, encouraging, deeply personalized health protocol of approximately 300 words. 
+        You are a PhD Nutritionist and integrative-health practitioner. Read the user's profile and write a warm, encouraging, deeply personalized health protocol of approximately 130 words (STRICT: never exceed 160 words). 
         Reference specific details from their profile (goals, conditions, allergies, medication interactions, activity). Provide concrete daily guidance on macronutrients, hydration, meal timing, and one simple ritual to anchor the day. 
-        Tone: thoughtful, sanctuary-like, never clinical or scolding. You are Cal, an educational nutrition guide — NOT a doctor, dietitian, or medical professional. Never refer to yourself with a clinical title (no 'Dr.', no 'PhD', no 'clinician'). End with a single one-line signature in italics phrased exactly as: 'In service of your wellness, — Cal'. 
+        Be concise and complete: ALWAYS finish your final sentence — never stop mid-thought. 
+        Tone: thoughtful, sanctuary-like, never clinical or scolding. You are Cal, an educational nutrition guide — NOT a doctor, dietitian, or medical professional. Never refer to yourself with a clinical title (no 'Dr.', no 'PhD', no 'clinician'). Do NOT add a signature or sign-off — the app appends it. 
         Output: plain prose only. No markdown, no headings, no bullet lists.
         """
         let body: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": system],
-                ["role": "user", "content": "Profile:\n\(profileSummary)\n\nWrite the 300-word health protocol now."],
+                ["role": "user", "content": "Profile:\n\(profileSummary)\n\nWrite the concise (~130 word) health protocol now. Finish every sentence."],
             ],
             "temperature": 0.7,
-            "max_tokens": 2000,
+            "max_tokens": 400,
         ]
         let raw = try await postChat(body: body)
         return raw.trimmingCharacters(in: .whitespacesAndNewlines)

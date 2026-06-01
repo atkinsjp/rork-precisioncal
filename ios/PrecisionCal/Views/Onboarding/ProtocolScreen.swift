@@ -19,7 +19,7 @@ struct ProtocolScreen: View {
                 Text("A note from Cal")
                     .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(PrecisionCalTheme.textPrimary)
-                Text("A personalized 300-word plan, written just now from your answers.")
+                Text("A personalized plan, written just now from your answers.")
                     .font(.system(size: 16))
                     .foregroundStyle(PrecisionCalTheme.textSecondary)
             }
@@ -153,7 +153,7 @@ struct ProtocolScreen: View {
         for attempt in 0..<3 {
             do {
                 let text = try await AIService.shared.generateHealthProtocol(profileSummary: profileSummary)
-                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmed = Self.clampNote(text)
                 guard !trimmed.isEmpty else { throw AIError.decodingError("empty") }
                 await MainActor.run {
                     healthProtocol = trimmed
@@ -186,7 +186,7 @@ struct ProtocolScreen: View {
 
         // All retries failed — provide a graceful fallback protocol so the user
         // can still complete onboarding. They can refine later in the app.
-        let fallback = fallbackProtocol(profileSummary: profileSummary)
+        let fallback = Self.clampNote(fallbackProtocol(profileSummary: profileSummary))
         await MainActor.run {
             healthProtocol = fallback
             isLoading = false
@@ -212,6 +212,37 @@ struct ProtocolScreen: View {
 
         In service of your wellness, — Cal
         """
+    }
+
+    /// Hard character budget for Cal's note. The note must NEVER exceed this
+    /// limit, and must never end mid-sentence.
+    static let maxChars = 760
+
+    /// Normalizes Cal's note: strips any model-written sign-off (the card shows
+    /// its own "— Cal" badge) and clamps to `maxChars` on a sentence boundary so
+    /// the text can never overflow or be cut mid-thought.
+    static func clampNote(_ raw: String) -> String {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Remove a trailing sign-off line if the model added one.
+        for marker in ["In service of your wellness,", "— Cal", "- Cal", "—Cal"] {
+            if let range = text.range(of: marker, options: [.caseInsensitive, .backwards]) {
+                text = String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        guard text.count > maxChars else { return text }
+
+        let slice = String(text.prefix(maxChars))
+        // Prefer trimming at the last completed sentence.
+        if let punctuation = slice.rangeOfCharacter(from: CharacterSet(charactersIn: ".!?"), options: .backwards) {
+            return String(slice[...punctuation.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // No sentence break found — trim at the last word and add an ellipsis.
+        if let space = slice.rangeOfCharacter(from: .whitespacesAndNewlines, options: .backwards) {
+            return String(slice[..<space.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
+        }
+        return slice
     }
 
     private func animateReveal() {
