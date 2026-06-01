@@ -45,7 +45,7 @@ struct FirstScanFunnelView: View {
                 analyzingScreen
                     .transition(.opacity)
             case .paywall:
-                PaywallView(store: store, isMandatory: true)
+                PaywallView(store: store, isMandatory: true, context: .postAnalysis)
                     .onAppear { if store.hasAccess { setStage(.signin) } }
                     .onChange(of: store.hasAccess) { _, has in
                         if has { setStage(.signin) }

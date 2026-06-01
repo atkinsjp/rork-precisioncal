@@ -1,11 +1,20 @@
 import SwiftUI
 import RevenueCat
 
+/// Framing variants for the paywall. `.postAnalysis` is used right after the
+/// onboarding 6-pass analysis completes and presents a frictionless, free-trial
+/// activation step; `.standard` is the general upgrade screen.
+enum PaywallContext {
+    case standard
+    case postAnalysis
+}
+
 struct PaywallView: View {
     var store: StoreViewModel
     /// When true, the paywall cannot be dismissed (no close button) — the user
     /// must subscribe (or restore) to continue using the app.
     var isMandatory: Bool = false
+    var context: PaywallContext = .standard
     var onDismiss: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
@@ -72,7 +81,17 @@ struct PaywallView: View {
 
                     purchaseButton
                         .padding(.horizontal, 22)
-                        .padding(.bottom, 14)
+                        .padding(.bottom, context == .postAnalysis ? 10 : 14)
+
+                    if context == .postAnalysis, let caption = trialComplianceCaption {
+                        Text(caption)
+                            .font(.system(size: 11))
+                            .foregroundStyle(PrecisionCalTheme.textTertiary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(2)
+                            .padding(.horizontal, 26)
+                            .padding(.bottom, 16)
+                    }
 
                     footer
                         .padding(.horizontal, 22)
@@ -162,18 +181,20 @@ struct PaywallView: View {
             }
 
             VStack(spacing: 6) {
-                Text("PRECISIONCAL PRO")
+                Text(context == .postAnalysis ? "6-PASS PIPELINE" : "PRECISIONCAL PRO")
                     .font(.system(size: 11, weight: .bold))
                     .tracking(3)
                     .foregroundStyle(PrecisionCalTheme.terracotta)
 
-                Text("Unlock your full\ncalibration")
+                Text(context == .postAnalysis ? "6-Pass Analysis\nComplete" : "Unlock your full\ncalibration")
                     .font(.system(size: 32, weight: .bold))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(PrecisionCalTheme.textPrimary)
                     .lineSpacing(2)
 
-                Text("AI-personalized nutrition, weekly recalibration & deep insights.")
+                Text(context == .postAnalysis
+                     ? "Start your 3-Day Free Trial to unlock your first Nutritional Autopsy and activate your personalized PhD Protocol."
+                     : "AI-personalized nutrition, weekly recalibration & deep insights.")
                     .font(.system(size: 14))
                     .foregroundStyle(PrecisionCalTheme.textSecondary)
                     .multilineTextAlignment(.center)
@@ -185,7 +206,33 @@ struct PaywallView: View {
 
     // MARK: - Benefits
 
+    @ViewBuilder
     private var benefits: some View {
+        if context == .postAnalysis {
+            postAnalysisBenefits
+        } else {
+            standardBenefits
+        }
+    }
+
+    private var postAnalysisBenefits: some View {
+        VStack(spacing: 12) {
+            EmojiBenefitRow(
+                emoji: "🔓",
+                text: "Immediate access to today's Hidden Fat & Lipid Sheen breakdown."
+            )
+            EmojiBenefitRow(
+                emoji: "🧪",
+                text: "24/7 Unlimited access to your personal PhD AI Nutritionist."
+            )
+            EmojiBenefitRow(
+                emoji: "📉",
+                text: "Zero risk. Cancel anytime before Day 3."
+            )
+        }
+    }
+
+    private var standardBenefits: some View {
         VStack(spacing: 10) {
             BenefitRow(
                 icon: "wand.and.stars",
@@ -308,9 +355,48 @@ struct PaywallView: View {
            intro.price == 0 {
             // User-facing CTA is intentionally catchy and plan-agnostic — the free
             // trial length & billing terms are fully disclosed in the footer.
-            return "Start Free Trial"
+            return context == .postAnalysis ? "Start My 3-Day Free Trial" : "Start Free Trial"
         }
         return "Continue"
+    }
+
+    /// Compliance micro-copy shown directly beneath the CTA in the post-analysis
+    /// context. Reflects the real selected plan price and free-trial length.
+    private var trialComplianceCaption: String? {
+        guard let pkg = selectedPackage else { return nil }
+        let price = pkg.storeProduct.localizedPriceString
+        let period = compactPeriodLabel(for: pkg)
+        let symbol = currencySymbol(pkg)
+        let zero = symbol.isEmpty ? "$0.00" : "\(symbol)0.00"
+        guard let intro = pkg.storeProduct.introductoryDiscount, intro.price == 0 else {
+            // No free trial on this plan — keep the disclosure honest.
+            return "\(price)/\(period). Auto-renews until cancelled. Easily cancel in your Apple Account settings at least 24 hours before renewal."
+        }
+        let v = intro.subscriptionPeriod.value
+        let unit = pluralUnit(intro.subscriptionPeriod.unit, value: v)
+        return "Today: \(zero). After \(v) \(unit): \(price)/\(period). Easily cancel in your Apple Account settings at least 24 hours before the trial ends."
+    }
+
+    private func compactPeriodLabel(for package: Package) -> String {
+        switch package.packageType {
+        case .annual: return "year"
+        case .sixMonth: return "6 months"
+        case .threeMonth: return "3 months"
+        case .twoMonth: return "2 months"
+        case .monthly: return "month"
+        case .weekly: return "week"
+        case .lifetime: return "once"
+        default: return "period"
+        }
+    }
+
+    private func pluralUnit(_ unit: SubscriptionPeriod.Unit, value: Int) -> String {
+        switch unit {
+        case .day: return value == 1 ? "day" : "days"
+        case .week: return value == 1 ? "week" : "weeks"
+        case .month: return value == 1 ? "month" : "months"
+        case .year: return value == 1 ? "year" : "years"
+        }
     }
 
     // MARK: - Footer
@@ -453,6 +539,28 @@ struct PaywallView: View {
         case .week: return value == 1 ? "week" : "week"
         case .month: return value == 1 ? "month" : "month"
         case .year: return value == 1 ? "year" : "year"
+        }
+    }
+}
+
+private struct EmojiBenefitRow: View {
+    let emoji: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Text(emoji)
+                .font(.system(size: 20))
+                .frame(width: 40, height: 40)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(PrecisionCalTheme.terracotta.opacity(0.12))
+                }
+            Text(text)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(PrecisionCalTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
         }
     }
 }
