@@ -4,6 +4,7 @@ import SwiftData
 struct OnboardingFlow: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("hasOnboarded") private var hasOnboarded: Bool = false
+    @AppStorage(OnboardingFunnelStage.storageKey) private var funnelStageRaw: String = ""
 
     @State private var step: Int = 0
 
@@ -140,7 +141,10 @@ struct OnboardingFlow: View {
         )
         modelContext.insert(profile)
         try? modelContext.save()
-        withAnimation { hasOnboarded = true }
+        // Value-first funnel: don't drop the user on the dashboard yet. Send them
+        // into the mandatory first scan; the paywall comes right after Pass 6.
+        hasOnboarded = true
+        withAnimation { funnelStageRaw = OnboardingFunnelStage.firstScan.rawValue }
     }
 
     private func calorieTarget() -> Int {

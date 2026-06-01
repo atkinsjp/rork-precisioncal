@@ -3,33 +3,43 @@ import SwiftData
 
 struct RootView: View {
     @AppStorage("hasOnboarded") private var hasOnboarded: Bool = false
+    @AppStorage(OnboardingFunnelStage.storageKey) private var stageRaw: String = ""
     @Environment(StoreViewModel.self) private var store
     @Query private var profiles: [UserProfile]
 
-    private var isOnboarded: Bool {
-        hasOnboarded || profiles.first != nil
+    /// Resolve the current funnel stage. Users who onboarded before the value-first
+    /// funnel existed have no stored stage — migrate them straight to `.done` so
+    /// they're never bounced back into the funnel.
+    private var stage: OnboardingFunnelStage {
+        if let s = OnboardingFunnelStage(rawValue: stageRaw), !stageRaw.isEmpty {
+            return s
+        }
+        return (hasOnboarded || profiles.first != nil) ? .done : .questionnaire
     }
 
-    /// The paywall is mandatory: once onboarding is complete, the app is
-    /// unusable until the user starts a subscription. Tapping Subscribe begins
-    /// the StoreKit 3-day free trial (the App Store introductory offer) before
-    /// the first charge. The owner override bypasses this for testing/review.
+    /// The blanket paywall only gates returning users (funnel already complete)
+    /// whose subscription has lapsed. First-time users meet the paywall inside the
+    /// funnel, right after their first 6-pass analysis. The owner override bypasses it.
     private var mustShowPaywall: Bool {
-        isOnboarded && store.hasResolvedStatus && !store.hasAccess
+        stage == .done && store.hasResolvedStatus && !store.hasAccess
     }
 
     var body: some View {
         ZStack {
             MeshBackground()
-            if isOnboarded {
+            switch stage {
+            case .questionnaire:
+                OnboardingFlow()
+                    .transition(.opacity)
+            case .done:
                 MainTabView()
                     .transition(.opacity)
-            } else {
-                OnboardingFlow()
+            default:
+                FirstScanFunnelView()
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.5), value: isOnboarded)
+        .animation(.easeInOut(duration: 0.5), value: stage)
         .onAppear(perform: syncFlag)
         .onChange(of: profiles.count) { _, _ in syncFlag() }
         .fullScreenCover(isPresented: .constant(mustShowPaywall)) {
@@ -39,8 +49,7 @@ struct RootView: View {
     }
 
     private func syncFlag() {
-        // Self-heal: if a profile exists but the flag was lost, restore it
-        // so the user is never sent back through onboarding.
+        // Self-heal: if a profile exists but the flag was lost, restore it.
         if profiles.first != nil, !hasOnboarded {
             hasOnboarded = true
         }

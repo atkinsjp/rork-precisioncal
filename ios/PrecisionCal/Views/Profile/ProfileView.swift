@@ -11,6 +11,7 @@ struct ProfileView: View {
     @Query(sort: \Meal.createdAt, order: .reverse) private var meals: [Meal]
     @Query(sort: \Calibration.createdAt, order: .reverse) private var calibrations: [Calibration]
     @AppStorage("hasOnboarded") private var hasOnboarded: Bool = false
+    @AppStorage(OnboardingFunnelStage.storageKey) private var funnelStageRaw: String = ""
 
     @State private var calibrating: Bool = false
     @State private var calibrationToast: String? = nil
@@ -248,6 +249,7 @@ struct ProfileView: View {
 
         // Bounce user back to onboarding.
         hasOnboarded = false
+        funnelStageRaw = ""
         isDeletingAccount = false
     }
 
@@ -647,6 +649,7 @@ struct ProfileView: View {
             for p in profiles { modelContext.delete(p) }
             try? modelContext.save()
             hasOnboarded = false
+            funnelStageRaw = ""
         } label: {
             GlassCard(cornerRadius: 18) {
                 HStack {
