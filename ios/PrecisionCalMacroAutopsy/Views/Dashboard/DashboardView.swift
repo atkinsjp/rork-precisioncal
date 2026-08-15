@@ -273,9 +273,13 @@ struct DashboardView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(2.5)
                     .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
-                Text("PrecisionCalMacroAutopsy")
-                    .font(.system(size: 36, weight: .bold))
-                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                VStack(spacing: 0) {
+                    Text("PrecisionCal")
+                    Text("Nutritional Autopsy")
+                }
+                .font(.system(size: 34, weight: .bold))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
             }
             .frame(maxWidth: .infinity)
         }
