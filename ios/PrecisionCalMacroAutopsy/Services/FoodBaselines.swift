@@ -133,3 +133,55 @@ nonisolated enum FoodBaseline {
         }
     }
 }
+
+/// Reference weight (grams) of ONE typical unit of a discrete, countable food.
+/// Anchors dimensional estimates so multi-unit foods ("4 pancakes") are weighed
+/// as count × unit weight instead of one unconstrained volumetric mass.
+nonisolated enum UnitReference {
+    /// Keyword → grams per single unit. First keyword contained in the item name wins,
+    /// so order from most-specific to most-generic.
+    private static let table: [(keywords: [String], gramsPerUnit: Double)] = [
+        (["chicken breast", "grilled chicken"], 174),
+        (["chicken thigh"], 130),
+        (["drumstick"], 62),
+        (["wing"], 40),
+        (["fried chicken", "chicken piece"], 120),
+        (["steak", "pork chop", "chop"], 220),
+        (["sausage"], 68),
+        (["meatball"], 30),
+        (["nugget", "tender"], 25),
+        (["shrimp"], 12),
+        (["bacon"], 12),
+        (["pancake", "crepe"], 60),
+        (["waffle"], 75),
+        (["french toast"], 65),
+        (["egg"], 50),
+        (["toast", "bread slice", "slice of bread", "bread"], 30),
+        (["burger patty", "patty", "hamburger", "cheeseburger", "burger"], 113),
+        (["hash brown", "tater tot"], 70),
+        (["muffin"], 110),
+        (["donut", "doughnut"], 60),
+        (["cookie"], 30),
+        (["brownie"], 56),
+        (["bagel"], 105),
+        (["croissant"], 60),
+        (["bun", "roll", "biscuit"], 55),
+        (["taco"], 78),
+        (["tortilla"], 45),
+        (["banana"], 118),
+        (["apple"], 182),
+        (["orange", "mandarin"], 130),
+        (["avocado"], 150),
+        (["potato"], 173),
+        (["scoop", "ice cream"], 66),
+    ]
+
+    /// Grams per single unit for a discrete food, or nil when no reference exists.
+    static func gramsPerUnit(forName name: String) -> Double? {
+        let lowered = name.lowercased()
+        for entry in table where entry.keywords.contains(where: { lowered.contains($0) }) {
+            return entry.gramsPerUnit
+        }
+        return nil
+    }
+}

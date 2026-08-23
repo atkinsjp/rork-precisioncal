@@ -79,6 +79,14 @@ nonisolated struct Pass1Item: Codable, Sendable {
     let preparation: String
     let visual: String?
     let category: String?
+    /// Whether the item comes in distinct, countable units (pancakes, eggs, slices).
+    let isDiscrete: Bool?
+    /// Exact number of units when discrete (e.g. 4 pancakes).
+    let discreteCount: Int?
+    /// Physical size anchor for ONE unit (e.g. "medium (approx 5-6 inch diameter)").
+    let estimatedSize: String?
+    /// How the units appear (e.g. "stacked", "spread", "fanned", "cut in half").
+    let state: String?
 }
 
 nonisolated struct Pass1Output: Codable, Sendable {
@@ -162,6 +170,9 @@ nonisolated final class AIService: Sendable {
 
     private let toolkitURL = "https://toolkit.rork.com"
     private let model = "google/gemini-2.5-flash"
+    /// Fixed sampling seed shared by every analysis pass so identical images
+    /// produce identical outputs (deterministic sampling, no generative drift).
+    private static let deterministicSeed = 7
 
     @MainActor
     private static var secret: String { Config.EXPO_PUBLIC_RORK_TOOLKIT_SECRET_KEY }
@@ -188,7 +199,8 @@ nonisolated final class AIService: Sendable {
                 ["role": "system", "content": system],
                 ["role": "user", "content": "Barcode: \(barcode)\nRaw product data:\n\(rawJSON.prefix(8000))"],
             ],
-            "temperature": 0.1,
+            "temperature": 0.0,
+            "seed": Self.deterministicSeed,
             "max_tokens": 1800,
         ]
         let raw = try await postChat(body: body)
@@ -467,7 +479,10 @@ nonisolated final class AIService: Sendable {
         // Pass 4 — Dimensional (Vision): spatial volume + gram estimation. Fall back if it fails.
         let p2: Pass2Output
         do {
-            p2 = try await runPass2(base64: base64, p1: p1)
+            let p2Raw = try await runPass2(base64: base64, p1: p1)
+            // VOLUMETRIC DRIFT GUARDRAIL: clamp discrete-item estimates to the
+            // anchored range around count × reference unit weight.
+            p2 = anchorDiscreteWeights(p1Items: p1.items, weights: p2Raw)
         } catch {
             print("[AIService] Pass4 (Dimensional) failed (\(error)) — falling back to single-shot.")
             return try await singleShotFallback(base64: base64, onProgress: onProgress)
@@ -601,6 +616,39 @@ nonisolated final class AIService: Sendable {
         return na.contains(nb) || nb.contains(na)
     }
 
+    // MARK: - Discrete unit anchoring (volumetric drift guardrail)
+
+    /// Clamp dimensional estimates for discrete items (e.g. "4 pancakes") into
+    /// [0.5, 2.0] × (count × reference unit weight). Identical re-scans can then
+    /// never swing by hundreds of grams: a 4-pancake stack is anchored near 240g,
+    /// not treated as one unconstrained mass. Estimates without a reference unit
+    /// pass through unchanged.
+    private func anchorDiscreteWeights(p1Items: [Pass1Item], weights: Pass2Output) -> Pass2Output {
+        var items = weights.items
+        for idx in items.indices {
+            guard let p1 = p1Items.first(where: { matchName($0.name, items[idx].name) }),
+                  p1.isDiscrete == true,
+                  let count = p1.discreteCount, count >= 1,
+                  let unitG = UnitReference.gramsPerUnit(forName: p1.name) else { continue }
+            let anchor = Double(count) * unitG
+            let estimate = items[idx].estimatedWeightG
+            let clamped = min(max(estimate, anchor * 0.5), anchor * 2.0).rounded()
+            if abs(clamped - estimate) > 1 {
+                items[idx] = Pass2Item(name: items[idx].name, preparation: items[idx].preparation, estimatedWeightG: clamped)
+                print("[AIService] Drift guardrail: '\(p1.name)' ×\(count) anchored to \(Int(clamped))g (model said \(Int(estimate))g; reference \(Int(anchor))g).")
+            }
+        }
+        return Pass2Output(items: items, totalWeightG: items.reduce(0.0) { $0 + $1.estimatedWeightG })
+    }
+
+    /// Gram weight for a dropped discrete item: count × reference unit weight.
+    private func discreteAnchoredGrams(for p1: Pass1Item) -> Double? {
+        guard p1.isDiscrete == true,
+              let count = p1.discreteCount, count >= 1,
+              let unitG = UnitReference.gramsPerUnit(forName: p1.name) else { return nil }
+        return (Double(count) * unitG).rounded()
+    }
+
     // MARK: - Meal score
 
     /// Resolve the final meal score. Trusts the model's value when it's a sane non-zero number;
@@ -662,6 +710,7 @@ nonisolated final class AIService: Sendable {
             } else {
                 // Item enumerated in Pass 1 but dropped by the nutrition passes — rebuild it.
                 let grams = weights.first { matchName($0.name, p1.name) }?.estimatedWeightG
+                    ?? discreteAnchoredGrams(for: p1)
                     ?? FoodBaseline.defaultGrams(category: p1.category)
                 print("[AIService] Reconcile: re-attaching dropped item '\(p1.name)' (\(Int(grams))g) from baseline.")
                 output.append(baselineItem(name: p1.name, preparation: p1.preparation, grams: grams, category: p1.category))
@@ -737,7 +786,7 @@ nonisolated final class AIService: Sendable {
         let system = """
         You are PrecisionCalMacroAutopsy, a senior nutritionist with computer-vision expertise. Analyze the meal photo end-to-end:
         1. EXHAUSTIVELY identify every distinct food item, side, vegetable, starch, sauce, dip, garnish, and condiment visible. Do NOT collapse sides into the main dish. Typical plates have 3–6 items; if you only see one, look again for missed carbs/vegetables/sauces.
-        2. Estimate gram weights from plate size and depth cues. Use density constants (g/cm^3): chicken 1.05, beef 1.05, fish 1.0, rice 0.85, pasta 1.10, bread 0.30, oil 0.92, butter 0.91, leafy veg 0.30, root veg 0.65, beans 1.20, cheese 1.10, fruit 0.85.
+        2. Estimate gram weights from plate size and depth cues. Use density constants (g/cm^3): chicken 1.05, beef 1.05, fish 1.0, rice 0.85, pasta 1.10, bread 0.30, oil 0.92, butter 0.91, leafy veg 0.30, root veg 0.65, beans 1.20, cheese 1.10, fruit 0.85. For DISCRETE countable foods (pancakes, waffles, eggs, bread slices, burger patties, sausages, whole fruit), COUNT the units and compute unit weight × count (e.g. 4 medium pancakes ≈ 4 × 60g = 240g) — never treat a multi-unit stack as one unconstrained mass.
         3. Map weights to USDA FoodData Central nutrition. Account for prep (frying adds oil; grilling does not). Fiber and sugar MUST be non-zero for plant foods (carrots ~2.8g fiber/100g, potatoes ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, BBQ sauce ~25g sugar/100g, fruit ~2–10g sugar/100g). Returning 0 fiber and 0 sugar on a meal with vegetables/starch/fruit/sauce is a BUG.
         4. QC: kcal/g should be 0.5 to 6 for most foods, 9 for pure oil, 0.2 to 0.4 for leafy veg. Reconcile macros (4/4/9 kcal per g). Adjust water for cooking method. Cooked chicken breast is ~31g protein/100g — do not over-attribute protein.
         Score the meal 0 to 100 on protein adequacy, fiber, sugar load, prep, and balance.
@@ -758,7 +807,8 @@ nonisolated final class AIService: Sendable {
                     ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
                 ]],
             ],
-            "temperature": 0.1,
+            "temperature": 0.0,
+            "seed": Self.deterministicSeed,
             "max_tokens": 4096,
         ]
         let raw = try await postChat(body: body)
@@ -822,8 +872,14 @@ nonisolated final class AIService: Sendable {
         - Beverages if shown
         Minimum expectation: typical restaurant plates have 3–6 distinct items. If you only see one, you are almost certainly missing sides — look again.
 
+        DISCRETE UNIT COUNTING — MANDATORY for countable foods:
+        - For any food that comes in distinct units (pancakes, waffles, crepes, eggs, slices of bread/toast, burger/sandwich patties, sausages, meatballs, nuggets, wings, drumsticks, cookies, muffins, donuts, whole fruit, scoops), set "isDiscrete": true and count the units EXACTLY in "discreteCount". COUNT every unit: a stack of pancakes is 4 pancakes, not one mass. If units are cut or partially hidden, estimate the nearest whole-unit equivalent.
+        - Give "estimatedSize" as a size class with a physical anchor for ONE unit (e.g. "medium (approx 5-6 inch diameter)", "large (approx 30g slice)", "small (approx 2-inch)").
+        - Give "state" describing the arrangement ("stacked", "spread", "fanned", "cut in half").
+        - Amorphous foods (rice, pasta, salad, stew, sauces, casseroles, mashed items) set "isDiscrete": false and "discreteCount": 1.
+
         Return STRICT JSON only:
-        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|roasted|sauteed|other","visual":"color/texture","category":"protein|carb|veg|fat|fruit|dairy|sauce|other"}],"plateDetails":"diameter cm + shape","depthCues":"shadow/portion notes"}
+        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|roasted|sauteed|other","visual":"color/texture","category":"protein|carb|veg|fat|fruit|dairy|sauce|other","isDiscrete":true|false,"discreteCount":number,"estimatedSize":"size class for ONE unit or empty","state":"stacked|spread|fanned|cut|other"}],"plateDetails":"diameter cm + shape","depthCues":"shadow/portion notes"}
         """
         let body: [String: Any] = [
             "model": model,
@@ -834,7 +890,8 @@ nonisolated final class AIService: Sendable {
                     ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
                 ]],
             ],
-            "temperature": 0.1,
+            "temperature": 0.0,
+            "seed": Self.deterministicSeed,
             "max_tokens": 2048,
         ]
         let raw = try await postChat(body: body)
@@ -849,6 +906,12 @@ nonisolated final class AIService: Sendable {
         Cross-reference plate diameter (\(p1.plateDetails ?? "unknown")) and depth cues (\(p1.depthCues ?? "unknown")).
         Items from Pass 1: \(itemsJSON).
         CRITICAL: Return EXACTLY ONE entry for EVERY item in the Pass 1 list above — same count, same names. NEVER merge sides into the main dish, and NEVER drop a starch, vegetable, fruit, or sauce.
+
+        DISCRETE UNIT WEIGHTING — CRITICAL:
+        For every item with "isDiscrete": true, estimate the weight of ONE unit from its "estimatedSize" and the reference anchors below, then MULTIPLY by "discreteCount". Report the TOTAL (unit weight × count) as estimatedWeightG — never an unconstrained mass. Reference unit weights: pancake ~60g, waffle ~75g, egg ~50g, bread slice ~30g, burger patty ~113g, sausage ~68g, meatball ~30g, nugget/tender ~25g, muffin ~110g, donut ~60g, cookie ~30g, banana ~118g, apple ~182g, baked potato ~173g, chicken breast ~174g, wing ~40g, drumstick ~62g.
+        Example: 4 medium pancakes (5–6 inch) = 4 × 60g = 240g TOTAL — not 400–600g.
+        Amorphous items ("isDiscrete": false) are estimated from volume × density as usual.
+
         Return STRICT JSON only:
         {"items":[{"name":"...","preparation":"...","estimatedWeightG":number}],"totalWeightG":number}
         """
@@ -861,7 +924,8 @@ nonisolated final class AIService: Sendable {
                     ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
                 ]],
             ],
-            "temperature": 0.1,
+            "temperature": 0.0,
+            "seed": Self.deterministicSeed,
             "max_tokens": 2048,
         ]
         let raw = try await postChat(body: body)
@@ -882,6 +946,7 @@ nonisolated final class AIService: Sendable {
         - Only return fiber=0 AND sugar=0 if the item is genuinely fiber/sugar-free (pure meat, pure oil/fat, pure egg white, pure broth). Plant foods returning 0 is a BUG.
 
         ITEM CONTINUITY — MANDATORY: Return EXACTLY ONE nutrition entry for EVERY item in the weights list below — same count, same names. Never merge, collapse, or drop an item. A starch source (potato, rice, pasta, bread) MUST carry its full carbohydrate, fiber, and sugar values; never compress carbs to 0 unless the item is an isolated fat or pure protein source.
+        The gram weights below are ANCHORED (discrete unit count × unit weight, density-checked). Use them exactly as given; do NOT rescale them.
         Items with weights: \(weightsJSON).
         Return STRICT JSON only:
         {"items":[{"name":"...","preparation":"...","grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"waterMl":number}]}
@@ -892,7 +957,8 @@ nonisolated final class AIService: Sendable {
                 ["role": "system", "content": system],
                 ["role": "user", "content": "Map all items to USDA nutrition values now."],
             ],
-            "temperature": 0.1,
+            "temperature": 0.0,
+            "seed": Self.deterministicSeed,
             "max_tokens": 4096,
         ]
         let raw = try await postChat(body: body)
@@ -922,7 +988,8 @@ nonisolated final class AIService: Sendable {
                     ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
                 ]],
             ],
-            "temperature": 0.1,
+            "temperature": 0.0,
+            "seed": Self.deterministicSeed,
             "max_tokens": 2048,
         ]
         let raw = try await postChat(body: body)
@@ -959,7 +1026,8 @@ nonisolated final class AIService: Sendable {
                     ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
                 ]],
             ],
-            "temperature": 0.1,
+            "temperature": 0.0,
+            "seed": Self.deterministicSeed,
             "max_tokens": 2048,
         ]
         let raw = try await postChat(body: body)
@@ -977,6 +1045,7 @@ nonisolated final class AIService: Sendable {
         - FIBER/SUGAR AUDIT: any plant food (vegetable, fruit, whole grain, legume, nut, seed, sauce with produce) MUST have non-zero fiber and/or sugar consistent with USDA. If Pass 3 returned 0 for a plant item, CORRECT it using USDA values: carrots ~2.8g fiber/100g, potato ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, lemon ~2.8g/100g, BBQ sauce ~25g sugar/100g, etc. Returning 0 fiber on a meal that contains vegetables, fruit, or starch is INCORRECT — fix it.
         - PROTEIN AUDIT: cooked chicken breast is ~31g protein per 100g. Do not over-attribute protein.
         - ITEM CONTINUITY: Preserve EVERY item from Pass 3 — same count, same names. Never merge sides into the entrée or drop a starch/vegetable/fruit/sauce. A meal titled with potatoes/rice/carrots that returns only the protein item is a BUG.
+        - GRAM LOCK: Gram weights from Pass 3 are anchored to discrete unit counts (unit weight × count, e.g. 4 medium pancakes ≈ 240g). Keep them UNCHANGED unless a kcal/g sanity check fails — never rescale a multi-unit item as one unconstrained mass.
         - CARB INTEGRITY RULE: You must ensure the total carbohydrates, sugars, and fibers of identified starch/carb sources (e.g. potatoes, rice, pasta, bread) are mathematically present and fully represented. Never compress carbohydrate subcategories to 0 unless the item is an isolated fat or pure protein source.
         Compute:
         - mealScore (0–100): protein adequacy, fiber, sugar load, prep method, balance.
@@ -996,7 +1065,8 @@ nonisolated final class AIService: Sendable {
                 ["role": "system", "content": system],
                 ["role": "user", "content": "Audit, correct outliers, and produce the verified report."],
             ],
-            "temperature": 0.1,
+            "temperature": 0.0,
+            "seed": Self.deterministicSeed,
             "max_tokens": 4096,
         ]
         let raw = try await postChat(body: body)
