@@ -840,6 +840,13 @@ struct AddWeightSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var weight: Double = 154
     @State private var note: String = ""
+    @State private var date: Date = Date()
+    private let dateRange: ClosedRange<Date> = {
+        let calendar = Calendar.current
+        let start = calendar.date(byAdding: .year, value: -2, to: Date()) ?? Date()
+        let end = calendar.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+        return start...end
+    }()
 
     init(initial: Double) {
         self.initial = initial
@@ -891,6 +898,24 @@ struct AddWeightSheet: View {
                         }
 
                         GlassCard {
+                            HStack {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+                                DatePicker(
+                                    "Date",
+                                    selection: $date,
+                                    in: dateRange,
+                                    displayedComponents: [.date]
+                                )
+                                .datePickerStyle(.compact)
+                                .font(.system(size: 14))
+                                .tint(PrecisionCalMacroAutopsyTheme.terracotta)
+                            }
+                            .padding(16)
+                        }
+
+                        GlassCard {
                             TextField("Optional note (e.g. morning, post-workout)", text: $note)
                                 .font(.system(size: 14))
                                 .padding(16)
@@ -918,7 +943,7 @@ struct AddWeightSheet: View {
     }
 
     private func save() {
-        let entry = BodyWeightEntry(weightKg: weight / 2.20462, note: note)
+        let entry = BodyWeightEntry(createdAt: date, weightKg: weight / 2.20462, note: note)
         modelContext.insert(entry)
         try? modelContext.save()
         let gen = UINotificationFeedbackGenerator()

@@ -482,8 +482,10 @@ nonisolated final class AIService: Sendable {
         do {
             let p2Raw = try await runPass2(base64: base64, p1: p1)
             // VOLUMETRIC DRIFT GUARDRAIL: clamp discrete-item estimates to the
-            // anchored range around count × reference unit weight.
-            p2 = anchorDiscreteWeights(p1Items: p1.items, weights: p2Raw)
+            // anchored range around count × reference unit weight, then enforce
+            // portion-reality caps for garnishes, sauces, and proteins.
+            let anchored = anchorDiscreteWeights(p1Items: p1.items, weights: p2Raw)
+            p2 = clampReasonableWeights(p1Items: p1.items, weights: anchored)
         } catch {
             print("[AIService] Pass4 (Dimensional) failed (\(error)) — falling back to single-shot.")
             return try await singleShotFallback(base64: base64, p1: p1ForFallback, p2: nil, onProgress: onProgress)
@@ -608,10 +610,11 @@ nonisolated final class AIService: Sendable {
             onProgress(.pass1Identified(items: items, title: title))
         }
         // If the chain already identified items, ensure the single-shot result keeps every one of them.
+        let clamped = clampResultItems(result.items)
         let finalized = finalizeItems(
             p1Items: p1?.items ?? [],
             weights: p2?.items ?? [],
-            modelItems: result.items
+            modelItems: clamped
         )
         if finalized.count != result.items.count {
             print("[AIService] Single-shot fallback recovered \(finalized.count - result.items.count) dropped item(s).")
@@ -679,6 +682,106 @@ nonisolated final class AIService: Sendable {
               let count = p1.discreteCount, count >= 1,
               let unitG = UnitReference.gramsPerUnit(forName: p1.name) else { return nil }
         return (Double(count) * unitG).rounded()
+    }
+
+    /// Hard safety clamp for amorphous/garnish/protein items that the model frequently overestimates.
+    /// This is a last-resort guardrail; prompts already ask for reasonable portions, but vision models
+    /// can confuse a heavy sprinkle of seeds with a 100g side dish or a single bowl protein with 1kg.
+    private func clampReasonableWeights(p1Items: [Pass1Item], weights: Pass2Output) -> Pass2Output {
+        var items = weights.items
+        for idx in items.indices {
+            let name = items[idx].name.lowercased()
+            let category = p1Items.first { matchName($0.name, items[idx].name) }?.category?.lowercased() ?? ""
+            let estimate = items[idx].estimatedWeightG
+            var clamped = estimate
+
+            // Garnish / sprinkle items: seeds, herbs, chopped scallions, chili flakes, spices.
+            let garnish = ["sesame", "seed", "seeds", "scallion", "green onion", "spring onion",
+                           "chili flake", "pepper flake", "red pepper flake", "flake",
+                           "herb", "cilantro", "parsley", "basil", "dill", "chive",
+                           "oregano", "thyme", "rosemary", "spice", "spices"]
+            if garnish.contains(where: { name.contains($0) }) {
+                clamped = min(clamped, 15)
+                if clamped != estimate {
+                    print("[AIService] Garnish clamp: '\(items[idx].name)' \(Int(estimate))g → \(Int(clamped))g.")
+                }
+            }
+
+            // Sauce / glaze / dressing: usually a coating, not a soup.
+            let sauce = ["glaze", "sauce", "dressing", "vinaigrette", "gravy", "ketchup",
+                         "mustard", "mayo", "mayonnaise", "dip", "salsa", "marinara"]
+            if sauce.contains(where: { name.contains($0) }) {
+                clamped = min(clamped, 80)
+                if clamped != estimate {
+                    print("[AIService] Sauce clamp: '\(items[idx].name)' \(Int(estimate))g → \(Int(clamped))g.")
+                }
+            }
+
+            // Protein in a single meal: rarely exceeds 350g in a regular bowl/plate.
+            let proteinKeywords = ["chicken", "beef", "steak", "pork", "lamb", "fish", "salmon",
+                                   "tuna", "cod", "shrimp", "tofu", "tempeh", "seitan"]
+            let isProtein = category == "protein" || proteinKeywords.contains(where: { name.contains($0) })
+            if isProtein {
+                clamped = min(clamped, 350)
+                if clamped != estimate {
+                    print("[AIService] Protein clamp: '\(items[idx].name)' \(Int(estimate))g → \(Int(clamped))g.")
+                }
+            }
+
+            items[idx] = Pass2Item(name: items[idx].name, preparation: items[idx].preparation, estimatedWeightG: clamped)
+        }
+        return Pass2Output(items: items, totalWeightG: items.reduce(0.0) { $0 + $1.estimatedWeightG })
+    }
+
+    /// Apply the same portion sanity clamps to final result items (used by single-shot fallback).
+    private func clampResultItems(_ items: [MealAnalysisResult.Item]) -> [MealAnalysisResult.Item] {
+        return items.map { item in
+            let name = item.name.lowercased()
+            var grams = item.grams
+            var calories = item.calories
+            var protein = item.protein
+            var carbs = item.carbs
+            var fat = item.fat
+            var fiber = item.fiber
+            var sugar = item.sugar
+
+            if ["sesame", "seed", "seeds", "scallion", "green onion", "spring onion",
+                "chili flake", "pepper flake", "herb", "cilantro", "parsley", "basil",
+                "dill", "chive", "spice"].contains(where: { name.contains($0) }) {
+                grams = min(grams, 15)
+            } else if ["glaze", "sauce", "dressing", "vinaigrette", "gravy", "ketchup",
+                       "mustard", "mayo", "dip", "salsa"].contains(where: { name.contains($0) }) {
+                grams = min(grams, 80)
+            } else if ["chicken", "beef", "steak", "pork", "lamb", "fish", "salmon",
+                       "tuna", "cod", "shrimp", "tofu", "tempeh"].contains(where: { name.contains($0) }) {
+                grams = min(grams, 350)
+            }
+
+            if grams != item.grams {
+                // Recalibrate macros proportionally to the new weight so totals stay consistent.
+                let ratio = grams / max(item.grams, 1)
+                calories = (item.calories * ratio).rounded()
+                protein = (item.protein * ratio).rounded()
+                carbs = (item.carbs * ratio).rounded()
+                fat = (item.fat * ratio).rounded()
+                fiber = (item.fiber * ratio).rounded()
+                sugar = (item.sugar * ratio).rounded()
+                print("[AIService] Final clamp: '\(item.name)' \(Int(item.grams))g → \(Int(grams))g.")
+            }
+
+            return MealAnalysisResult.Item(
+                name: item.name,
+                preparation: item.preparation,
+                grams: grams,
+                calories: calories,
+                protein: protein,
+                carbs: carbs,
+                fat: fat,
+                fiber: fiber,
+                sugar: sugar,
+                waterMl: item.waterMl
+            )
+        }
     }
 
     // MARK: - Meal score
@@ -840,11 +943,19 @@ nonisolated final class AIService: Sendable {
         }()
         let system = """
         You are PrecisionCalMacroAutopsy, a senior nutritionist with computer-vision expertise. Analyze the meal photo end-to-end:
-        1. EXHAUSTIVELY identify every distinct food item, side, vegetable, starch, sauce, dip, garnish, and condiment visible. Do NOT collapse sides into the main dish. Typical plates have 3–6 items; if you only see one, look again for missed carbs/vegetables/sauces.\(identifiedContext)
-        2. Estimate gram weights from plate size and depth cues. Use density constants (g/cm^3): chicken 1.05, beef 1.05, fish 1.0, rice 0.85, pasta 1.10, bread 0.30, oil 0.92, butter 0.91, leafy veg 0.30, root veg 0.65, beans 1.20, cheese 1.10, fruit 0.85. For DISCRETE countable foods (pancakes, waffles, eggs, bread slices, burger patties, sausages, whole fruit), COUNT the units and compute unit weight × count (e.g. 4 medium pancakes ≈ 4 × 60g = 240g) — never treat a multi-unit stack as one unconstrained mass.
-        3. Map weights to USDA FoodData Central nutrition. Account for prep (frying adds oil; grilling does not). Fiber and sugar MUST be non-zero for plant foods (carrots ~2.8g fiber/100g, potatoes ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, BBQ sauce ~25g sugar/100g, fruit ~2–10g sugar/100g). Returning 0 fiber and 0 sugar on a meal with vegetables/starch/fruit/sauce is a BUG.
-        4. QC: kcal/g should be 0.5 to 6 for most foods, 9 for pure oil, 0.2 to 0.4 for leafy veg. Reconcile macros (4/4/9 kcal per g). Adjust water for cooking method. Cooked chicken breast is ~31g protein/100g — do not over-attribute protein.
-        ITEM CONTINUITY GUARANTEE: The final JSON must contain a separate `items` entry for every food you can see. A breakfast plate with toast, avocado, egg, and seasonings must return four or more items, not one merged "toast" entry.
+        1. EXHAUSTIVELY identify every distinct food item, side, vegetable, starch, sauce, dip, garnish, and condiment visible. Do NOT collapse sides into the main dish. Typical plates have 3–6 items; if you only see one, look again for missed carbs/vegetables/sauces. Large visible components like a broccoli cluster or grain mound are NEVER optional.\(identifiedContext)
+        2. Estimate gram weights from plate size and depth cues. Use density constants (g/cm^3): chicken 1.05, beef 1.05, fish 1.0, rice 0.85, quinoa 0.75, pasta 1.10, bread 0.30, oil 0.92, butter 0.91, leafy veg 0.30, root veg 0.65, broccoli 0.35, beans 1.20, cheese 1.10, fruit 0.85. For DISCRETE countable foods (pancakes, waffles, eggs, bread slices, burger patties, sausages, whole fruit, lemon wedges), COUNT the units and compute unit weight × count (e.g. 4 medium pancakes ≈ 4 × 60g = 240g) — never treat a multi-unit stack as one unconstrained mass.
+        PORTION REALITY CHECK — MANDATORY:
+        - A single restaurant bowl or plate should rarely exceed 1,200g total.
+        - A single serving of chicken/pork/beef/fish in a bowl is typically 120–250g cooked; only large platters should exceed 300g.
+        - A sprinkle of seeds, chopped herbs, scallions, or chili flakes is a GARNISH, not a side dish: 2–10g total. Never return 100g of sesame seeds.
+        - A lemon/lime wedge is ~58g each; count the wedges and multiply.
+        - A sauce or glaze coating is usually 15–60g total, not 100g+ unless swimming in it.
+        - Grains (rice, quinoa) in a bowl are typically 120–250g cooked.
+        - Vegetables such as broccoli, carrots, or peppers should reflect visual coverage: a large portion is 150–250g, not 50g.
+        3. Map weights to USDA FoodData Central nutrition. Account for prep (frying adds oil; grilling does not). Fiber and sugar MUST be non-zero for plant foods (carrots ~2.8g fiber/100g, potatoes ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, quinoa ~2.8g/100g, BBQ sauce ~25g sugar/100g, sesame seeds ~12g fiber/100g, fruit ~2–10g sugar/100g). Returning 0 fiber and 0 sugar on a meal with vegetables/starch/fruit/sauce is a BUG.
+        4. QC: kcal/g should be 0.5 to 6 for most foods, 9 for pure oil, 0.2 to 0.4 for leafy veg. Reconcile macros (4/4/9 kcal per g). Adjust water for cooking method. Cooked chicken breast is ~31g protein/100g — do not over-attribute protein. Do not label a sauced/glazed item as "fried" unless it has visible batter/breading; glossy sauce is "glazed".
+        ITEM CONTINUITY GUARANTEE: The final JSON must contain a separate `items` entry for every food you can see. A breakfast plate with toast, avocado, egg, and seasonings must return four or more items, not one merged "toast" entry. A grain bowl with chicken, quinoa, broccoli, lemon wedges, sesame seeds, and scallions must return six or more items.
         Score the meal 0 to 100 on protein adequacy, fiber, sugar load, prep, and balance.
         metabolicImpact must be ONE short label like "Steady energy", "Quick spike", "Slow burn", "Recovery boost", or "Light & lean".
         qcNotes is ONE concise sentence.
@@ -852,7 +963,7 @@ nonisolated final class AIService: Sendable {
         - Fat subcategories for the WHOLE meal: saturatedFatG, unsaturatedFatG, transFatG; they MUST sum to total fat grams.
         - micronutrients: array of notable micronutrients (Sodium, Potassium, Magnesium, Calcium, Iron, Vitamin C, etc.) each with amountMg (convert mcg to mg) and pctDailyValue (integer percent). Include at least 4 for a real meal.
         Return STRICT JSON only with this exact shape:
-        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|other","grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"waterMl":number}],"metabolicImpact":"...","mealScore":number,"qcNotes":"...","saturatedFatG":number,"unsaturatedFatG":number,"transFatG":number,"micronutrients":[{"name":"Sodium","amountMg":number,"pctDailyValue":number}]}
+        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|roasted|sauteed|glazed|sauced|other","grams":number,"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"waterMl":number}],"metabolicImpact":"...","mealScore":number,"qcNotes":"...","saturatedFatG":number,"unsaturatedFatG":number,"transFatG":number,"micronutrients":[{"name":"Sodium","amountMg":number,"pctDailyValue":number}]}
         """
         let body: [String: Any] = [
             "model": model,
@@ -915,28 +1026,40 @@ nonisolated final class AIService: Sendable {
 
     private func runPass1(base64: String) async throws -> Pass1Output {
         let system = """
-        You are PrecisionCalMacroAutopsy Pass 1 (Vision). EXHAUSTIVELY enumerate EVERY distinct edible component visible on or beside the plate. Do not summarize, do not group, and do not skip items because they look minor.
+        You are PrecisionCalMacroAutopsy Pass 1 (Vision). EXHAUSTIVELY enumerate EVERY distinct edible component visible on or beside the plate. Do not summarize, do not group, and do not skip items because they look minor. Large visible components are NEVER optional.
 
-        MANDATORY COVERAGE — list each of the following as its OWN item whenever present:
+        MANDATORY COVERAGE — list each of the following as its OWN item whenever present, using the exact visible name:
         - Every protein (chicken, beef, fish, tofu, egg, etc.) — separate cuts if visually distinct
-        - Every starch/carb (potato, rice, pasta, bread, tortilla, fries, wedges, grains, beans, corn)
-        - Every vegetable (carrots, broccoli, greens, peppers, onions, tomatoes, etc.) — list each TYPE separately
-        - Every fruit, including garnishes (lemon wedge, lime, berries, apple slices)
-        - Every sauce, dressing, dip, gravy, glaze, or condiment visible in a bowl or drizzled on food (estimate type: tomato-based, cream-based, vinaigrette, BBQ, etc.)
+        - Every starch/carb (potato, rice, quinoa, pasta, bread, tortilla, fries, wedges, grains, beans, corn)
+        - Every vegetable (carrots, broccoli, greens, peppers, onions, tomatoes, scallions, etc.) — list each TYPE separately; a large broccoli cluster is a PRIMARY item, not garnish
+        - Every fruit, including garnishes (lemon wedge, lime, berries, apple slices, orange segments)
+        - Every sauce, dressing, dip, gravy, glaze, or condiment visible in a bowl or drizzled on food (estimate type: tomato-based, cream-based, vinaigrette, BBQ, teriyaki, orange glaze, etc.)
         - Every dairy item (cheese, sour cream, yogurt, butter pat)
         - Visible cooking fats (oil sheen, butter)
         - Beverages if shown
         Minimum expectation: typical restaurant plates have 3–6 distinct items. If you only see one, you are almost certainly missing sides — look again.
+
+        **BOWL / COMPOSED PLATE EXAMPLES:**
+        - A grain bowl with orange-glazed chicken, quinoa, roasted broccoli, lemon wedges, sesame seeds, and scallions must produce at least SIX items: the chicken, the quinoa, the broccoli, the lemon wedges, the sesame seeds, and the scallions. The glaze may be merged with the chicken item only if it is visibly coating the chicken; otherwise list it separately.
+        - A plate with rice, stir-fried vegetables, and grilled salmon must produce THREE separate items, not one "rice bowl" entry.
+
         **EXAMPLE:** A photo of avocado toast with a fried egg and red pepper flakes must produce at least four separate items: the toast, the avocado spread, the fried egg, and the chili/pepper seasoning. Do not merge them into a single "toast" entry.
 
+        PREPARATION HINTS — do not default to "fried" just because the food is glossy or sauced. Use:
+        - "grilled" or "baked" for matte/charred protein with minimal oil
+        - "sauteed" or "roasted" for vegetables with slight oil sheen
+        - "fried" only when there is visibly battered/breaded, deep-fried texture
+        - "glazed" or "sauced" when the item is coated in a sticky sauce (orange glaze, teriyaki, BBQ) but not battered
+        - "raw" for untouched fruit/vegetable garnishes
+
         DISCRETE UNIT COUNTING — MANDATORY for countable foods:
-        - For any food that comes in distinct units (pancakes, waffles, crepes, eggs, slices of bread/toast, burger/sandwich patties, sausages, meatballs, nuggets, wings, drumsticks, cookies, muffins, donuts, whole fruit, scoops), set "isDiscrete": true and count the units EXACTLY in "discreteCount". COUNT every unit: a stack of pancakes is 4 pancakes, not one mass. If units are cut or partially hidden, estimate the nearest whole-unit equivalent.
+        - For any food that comes in distinct units (pancakes, waffles, crepes, eggs, slices of bread/toast, burger/sandwich patties, sausages, meatballs, nuggets, wings, drumsticks, cookies, muffins, donuts, whole fruit, lemon wedges, scoops), set "isDiscrete": true and count the units EXACTLY in "discreteCount". COUNT every unit: a stack of pancakes is 4 pancakes, not one mass. If units are cut or partially hidden, estimate the nearest whole-unit equivalent.
         - Give "estimatedSize" as a size class with a physical anchor for ONE unit (e.g. "medium (approx 5-6 inch diameter)", "large (approx 30g slice)", "small (approx 2-inch)").
         - Give "state" describing the arrangement ("stacked", "spread", "fanned", "cut in half").
-        - Amorphous foods (rice, pasta, salad, stew, sauces, casseroles, mashed items) set "isDiscrete": false and "discreteCount": 1.
+        - Amorphous foods (rice, pasta, salad, stew, sauces, casseroles, mashed items, loose seeds, chopped scallions) set "isDiscrete": false and "discreteCount": 1.
 
         Return STRICT JSON only:
-        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|roasted|sauteed|other","visual":"color/texture","category":"protein|carb|veg|fat|fruit|dairy|sauce|other","isDiscrete":true|false,"discreteCount":number,"estimatedSize":"size class for ONE unit or empty","state":"stacked|spread|fanned|cut|other"}],"plateDetails":"diameter cm + shape","depthCues":"shadow/portion notes"}
+        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|roasted|sauteed|glazed|sauced|other","visual":"color/texture","category":"protein|carb|veg|fat|fruit|dairy|sauce|other","isDiscrete":true|false,"discreteCount":number,"estimatedSize":"size class for ONE unit or empty","state":"stacked|spread|fanned|cut|other"}],"plateDetails":"diameter cm + shape","depthCues":"shadow/portion notes"}
         """
         let body: [String: Any] = [
             "model": model,
@@ -959,15 +1082,24 @@ nonisolated final class AIService: Sendable {
         let itemsJSON = (try? String(data: JSONEncoder().encode(p1.items), encoding: .utf8)) ?? "[]"
         let system = """
         You are PrecisionCalMacroAutopsy Pass 2 (Scale). Estimate gram weights using density constants and the plate context from Pass 1.
-        Densities (g/cm³): chicken 1.05, beef 1.05, fish 1.00, rice 0.85, pasta 1.10, bread 0.30, oil 0.92, butter 0.91, leafy veg 0.30, root veg 0.65, beans 1.20, cheese 1.10, fruit 0.85.
+        Densities (g/cm³): chicken 1.05, beef 1.05, fish 1.00, rice 0.85, quinoa 0.75, pasta 1.10, bread 0.30, oil 0.92, butter 0.91, leafy veg 0.30, root veg 0.65, broccoli 0.35, beans 1.20, cheese 1.10, fruit 0.85.
         Cross-reference plate diameter (\(p1.plateDetails ?? "unknown")) and depth cues (\(p1.depthCues ?? "unknown")).
         Items from Pass 1: \(itemsJSON).
-        CRITICAL: Return EXACTLY ONE entry for EVERY item in the Pass 1 list above — same count, same names. NEVER merge sides into the main dish, and NEVER drop a starch, vegetable, fruit, or sauce.
+        CRITICAL: Return EXACTLY ONE entry for EVERY item in the Pass 1 list above — same count, same names. NEVER merge sides into the main dish, and NEVER drop a starch, vegetable, fruit, sauce, or garnish.
 
         DISCRETE UNIT WEIGHTING — CRITICAL:
-        For every item with "isDiscrete": true, estimate the weight of ONE unit from its "estimatedSize" and the reference anchors below, then MULTIPLY by "discreteCount". Report the TOTAL (unit weight × count) as estimatedWeightG — never an unconstrained mass. Reference unit weights: pancake ~60g, waffle ~75g, egg ~50g, bread slice ~30g, burger patty ~113g, sausage ~68g, meatball ~30g, nugget/tender ~25g, muffin ~110g, donut ~60g, cookie ~30g, banana ~118g, apple ~182g, baked potato ~173g, chicken breast ~174g, wing ~40g, drumstick ~62g.
+        For every item with "isDiscrete": true, estimate the weight of ONE unit from its "estimatedSize" and the reference anchors below, then MULTIPLY by "discreteCount". Report the TOTAL (unit weight × count) as estimatedWeightG — never an unconstrained mass. Reference unit weights: pancake ~60g, waffle ~75g, egg ~50g, bread slice ~30g, burger patty ~113g, sausage ~68g, meatball ~30g, nugget/tender ~25g, muffin ~110g, donut ~60g, cookie ~30g, banana ~118g, apple ~182g, baked potato ~173g, chicken breast ~174g, wing ~40g, drumstick ~62g, lemon/lime wedge ~58g.
         Example: 4 medium pancakes (5–6 inch) = 4 × 60g = 240g TOTAL — not 400–600g.
         Amorphous items ("isDiscrete": false) are estimated from volume × density as usual.
+
+        PORTION REALITY CHECK — MANDATORY:
+        - A single restaurant bowl or plate should rarely exceed 1,200g total. If your item estimates sum to more, rescale the largest items down.
+        - A single serving of chicken/pork/beef/fish in a bowl is typically 120–250g cooked. Only large platters or multiple pieces should exceed 300g.
+        - A sprinkle of seeds, chopped herbs, scallions, or chili flakes is a GARNISH, not a side dish: 2–10g total. Never return 100g of sesame seeds.
+        - A lemon/lime wedge is 50–60g each; count the wedges and multiply.
+        - A sauce or glaze coating is usually 15–60g total, not 100g+ unless the food is swimming in it.
+        - Grains (rice, quinoa) in a bowl are typically 120–250g cooked.
+        - Vegetables such as broccoli, carrots, or peppers should reflect their actual visual coverage: a large portion is 150–250g, not 50g.
 
         Return STRICT JSON only:
         {"items":[{"name":"...","preparation":"...","estimatedWeightG":number}],"totalWeightG":number}
@@ -1100,11 +1232,13 @@ nonisolated final class AIService: Sendable {
         - kcal/g ratio: most foods 0.5–6 kcal/g; pure oils ~9; leafy veg ~0.2–0.4. Correct any outliers.
         - Protein/carb/fat grams must roughly reconcile with calories (4/4/9 kcal per g).
         - Adjust water content for cooking method (frying reduces water).
-        - FIBER/SUGAR AUDIT: any plant food (vegetable, fruit, whole grain, legume, nut, seed, sauce with produce) MUST have non-zero fiber and/or sugar consistent with USDA. If Pass 3 returned 0 for a plant item, CORRECT it using USDA values: carrots ~2.8g fiber/100g, potato ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, lemon ~2.8g/100g, BBQ sauce ~25g sugar/100g, etc. Returning 0 fiber on a meal that contains vegetables, fruit, or starch is INCORRECT — fix it.
-        - PROTEIN AUDIT: cooked chicken breast is ~31g protein per 100g. Do not over-attribute protein.
-        - ITEM CONTINUITY (CRITICAL): Preserve EVERY item from Pass 3 — same count, same names. The canonical Pass 1 enumeration is:\n\(p1Names)\nYour final JSON must include a separate entry for every item in that list. Never merge sides into the entrée or drop a starch/vegetable/fruit/sauce. A meal that visually contains toast, avocado, egg, and seasonings but returns only "toast" is a BUG and must be corrected.
+        - FIBER/SUGAR AUDIT: any plant food (vegetable, fruit, whole grain, legume, nut, seed, sauce with produce) MUST have non-zero fiber and/or sugar consistent with USDA. If Pass 3 returned 0 for a plant item, CORRECT it using USDA values: carrots ~2.8g fiber/100g, potato ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, lemon ~2.8g/100g, quinoa ~2.8g/100g, BBQ sauce ~25g sugar/100g, sesame seeds ~12g fiber/100g, etc. Returning 0 fiber on a meal that contains vegetables, fruit, or starch is INCORRECT — fix it.
+        - PROTEIN AUDIT: cooked chicken breast is ~31g protein per 100g; glazed chicken with sauce may be slightly less due to sauce weight. Do not over-attribute protein.
+        - ITEM CONTINUITY (CRITICAL): Preserve EVERY item from Pass 3 — same count, same names. The canonical Pass 1 enumeration is:\n\(p1Names)\nYour final JSON must include a separate entry for every item in that list. Never merge sides into the entrée or drop a starch/vegetable/fruit/sauce/garnish. A meal that visually contains toast, avocado, egg, and seasonings but returns only "toast" is a BUG and must be corrected.
         - GRAM LOCK: Gram weights from Pass 3 are anchored to discrete unit counts (unit weight × count, e.g. 4 medium pancakes ≈ 240g). Keep them UNCHANGED unless a kcal/g sanity check fails — never rescale a multi-unit item as one unconstrained mass.
-        - CARB INTEGRITY RULE: You must ensure the total carbohydrates, sugars, and fibers of identified starch/carb sources (e.g. potatoes, rice, pasta, bread) are mathematically present and fully represented. Never compress carbohydrate subcategories to 0 unless the item is an isolated fat or pure protein source.
+        - PORTION REALITY CHECK: A single item of sesame seeds, scallions, herbs, or chili flakes should never exceed 15g. A single chicken/fish/tofu serving in a bowl should not exceed 300g unless it is clearly a large platter. A whole meal total should not exceed 1,200g for a single bowl/plate. Correct any absurd overestimates.
+        - PREP CHECK: Do not label a sauced/glazed item as "fried" unless it has visible batter/breading. Glossy sauce is "glazed", not "fried".
+        - CARB INTEGRITY RULE: You must ensure the total carbohydrates, sugars, and fibers of identified starch/carb sources (e.g. potatoes, rice, quinoa, pasta, bread) are mathematically present and fully represented. Never compress carbohydrate subcategories to 0 unless the item is an isolated fat or pure protein source.
         Compute:
         - mealScore (0–100): protein adequacy, fiber, sugar load, prep method, balance.
         - metabolicImpact: ONE short label like "Steady energy", "Quick spike", "Slow burn", "Recovery boost", "Light & lean".

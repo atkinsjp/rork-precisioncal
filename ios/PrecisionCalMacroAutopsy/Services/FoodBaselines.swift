@@ -34,6 +34,7 @@ nonisolated enum FoodBaseline {
         // Vegetables (cooked, per 100g)
         (["carrot"], .init(kcalPer100: 41, proteinPer100: 0.9, carbPer100: 9.6, fatPer100: 0.2, fiberPer100: 2.8, sugarPer100: 4.7)),
         (["broccoli"], .init(kcalPer100: 35, proteinPer100: 2.4, carbPer100: 7.2, fatPer100: 0.4, fiberPer100: 3.3, sugarPer100: 1.4)),
+        (["green onion", "scallion", "spring onion"], .init(kcalPer100: 32, proteinPer100: 1.8, carbPer100: 7.3, fatPer100: 0.2, fiberPer100: 2.6, sugarPer100: 2.3)),
         (["cauliflower"], .init(kcalPer100: 25, proteinPer100: 1.9, carbPer100: 5.0, fatPer100: 0.3, fiberPer100: 2.0, sugarPer100: 1.9)),
         (["green bean", "asparagus", "pea"], .init(kcalPer100: 40, proteinPer100: 2.5, carbPer100: 7.5, fatPer100: 0.2, fiberPer100: 3.0, sugarPer100: 2.5)),
         (["tomato"], .init(kcalPer100: 18, proteinPer100: 0.9, carbPer100: 3.9, fatPer100: 0.2, fiberPer100: 1.2, sugarPer100: 2.6)),
@@ -57,7 +58,11 @@ nonisolated enum FoodBaseline {
         (["tomato sauce", "marinara", "salsa"], .init(kcalPer100: 35, proteinPer100: 1.3, carbPer100: 7.0, fatPer100: 0.5, fiberPer100: 1.5, sugarPer100: 5.0)),
         (["vinaigrette", "dressing"], .init(kcalPer100: 290, proteinPer100: 0.5, carbPer100: 8.0, fatPer100: 28.0, fiberPer100: 0.1, sugarPer100: 5.0)),
         (["gravy"], .init(kcalPer100: 54, proteinPer100: 1.5, carbPer100: 5.0, fatPer100: 3.0, fiberPer100: 0.3, sugarPer100: 1.0)),
+        (["orange glaze", "teriyaki glaze", "glaze", "sweet sauce", "general tso", "sticky sauce"], .init(kcalPer100: 210, proteinPer100: 3.0, carbPer100: 38.0, fatPer100: 4.5, fiberPer100: 0.2, sugarPer100: 32.0)),
         (["honey", "syrup", "jam"], .init(kcalPer100: 304, proteinPer100: 0.3, carbPer100: 82.0, fatPer100: 0.0, fiberPer100: 0.2, sugarPer100: 75.0)),
+
+        // Nuts / seeds / garnishes (per 100g) — typical logged portions are tiny, so weights are clamped elsewhere
+        (["sesame seed", "sesame seeds"], .init(kcalPer100: 573, proteinPer100: 17.0, carbPer100: 23.4, fatPer100: 49.7, fiberPer100: 11.8, sugarPer100: 0.3)),
 
         // Dairy (per 100g)
         (["yogurt", "yoghurt"], .init(kcalPer100: 61, proteinPer100: 3.5, carbPer100: 4.7, fatPer100: 3.3, fiberPer100: 0.0, sugarPer100: 4.7)),
@@ -114,7 +119,8 @@ nonisolated enum FoodBaseline {
                          "tomato", "onion", "pepper", "spinach", "kale", "lettuce", "greens",
                          "salad", "fruit", "apple", "banana", "berry", "orange", "grape",
                          "lemon", "lime", "sauce", "bbq", "ketchup", "honey", "syrup", "jam",
-                         "vegetable", "fries", "wedge", "yam", "squash", "zucchini", "mushroom", "pea"]
+                         "vegetable", "fries", "wedge", "yam", "squash", "zucchini", "mushroom", "pea",
+                         "scallion", "green onion", "spring onion", "sesame seed"]
             return plant.contains(where: { lowered.contains($0) })
         }
     }
@@ -174,6 +180,7 @@ nonisolated enum UnitReference {
         (["avocado"], 150),
         (["potato"], 173),
         (["scoop", "ice cream"], 66),
+        (["lemon wedge", "lime wedge", "lemon", "lime"], 58),
     ]
 
     /// Grams per single unit for a discrete food, or nil when no reference exists.
