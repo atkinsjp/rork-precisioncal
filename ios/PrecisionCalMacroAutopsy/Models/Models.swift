@@ -176,6 +176,8 @@ final class MealItem {
     var fiber: Double
     var sugar: Double
     var waterMl: Double
+    /// How the gram weight was derived: visual estimation from the photo, or a default reference weight.
+    var weightSource: String
     var meal: Meal?
 
     init(
@@ -188,7 +190,8 @@ final class MealItem {
         fat: Double = 0,
         fiber: Double = 0,
         sugar: Double = 0,
-        waterMl: Double = 0
+        waterMl: Double = 0,
+        weightSource: String = "visual"
     ) {
         self.name = name
         self.preparation = preparation
@@ -200,6 +203,7 @@ final class MealItem {
         self.fiber = fiber
         self.sugar = sugar
         self.waterMl = waterMl
+        self.weightSource = weightSource
     }
 }
 

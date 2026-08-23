@@ -35,6 +35,8 @@ nonisolated struct MealAnalysisResult: Codable, Sendable {
         let fiber: Double
         let sugar: Double
         let waterMl: Double
+        /// How the gram weight was derived: "visual" from the AI estimate, or "default" from a reference/unit fallback.
+        let weightSource: String
     }
 }
 
@@ -543,7 +545,8 @@ nonisolated final class AIService: Sendable {
                 fat: item.fat + addedFat,
                 fiber: item.fiber,
                 sugar: item.sugar,
-                waterMl: item.waterMl
+                waterMl: item.waterMl,
+                weightSource: item.weightSource
             )
         }
         let qcCombined: String = {
@@ -779,7 +782,8 @@ nonisolated final class AIService: Sendable {
                 fat: fat,
                 fiber: fiber,
                 sugar: sugar,
-                waterMl: item.waterMl
+                waterMl: item.waterMl,
+                weightSource: item.weightSource
             )
         }
     }
@@ -839,6 +843,8 @@ nonisolated final class AIService: Sendable {
     /// nutrition when a name match exists and reconstructing any missing item from its best
     /// available weight (Pass 2 → discrete unit reference → category default) plus the USDA baseline.
     /// This is the ultimate source-of-truth guardrail: no identified food may be dropped.
+    /// Weight source is preserved: matched model items are "visual"; rebuilt items use the
+    /// Pass 2 visual weight if available, otherwise fall back to a default reference weight.
     private func finalizeItems(
         p1Items: [Pass1Item],
         weights: [Pass2Item],
@@ -857,11 +863,20 @@ nonisolated final class AIService: Sendable {
                 output.append(modelItems[i])
             } else {
                 // Item enumerated in Pass 1 but dropped by the nutrition passes — rebuild it.
-                let grams = weights.first { matchName($0.name, p1.name) }?.estimatedWeightG
-                    ?? discreteAnchoredGrams(for: p1)
-                    ?? FoodBaseline.defaultGrams(category: p1.category)
-                print("[AIService] Finalize: re-attaching dropped item '\(p1.name)' (\(Int(grams))g) from baseline.")
-                output.append(baselineItem(name: p1.name, preparation: p1.preparation, grams: grams, category: p1.category))
+                let source: String
+                let grams: Double
+                if let weight = weights.first(where: { matchName($0.name, p1.name) }) {
+                    grams = weight.estimatedWeightG
+                    source = "visual"
+                } else if let anchored = discreteAnchoredGrams(for: p1) {
+                    grams = anchored
+                    source = "default"
+                } else {
+                    grams = FoodBaseline.defaultGrams(category: p1.category)
+                    source = "default"
+                }
+                print("[AIService] Finalize: re-attaching dropped item '\(p1.name)' (\(Int(grams))g) from \(source) baseline.")
+                output.append(baselineItem(name: p1.name, preparation: p1.preparation, grams: grams, category: p1.category, weightSource: source))
             }
         }
         // Preserve any model-returned item that didn't match a Pass 1 entry (rare).
@@ -873,6 +888,7 @@ nonisolated final class AIService: Sendable {
 
     /// Convert a mapped nutrition item into a final item, backfilling zeroed carbohydrate macros
     /// for plant/starch/fruit/sauce foods from USDA baseline values (calories kept in sync at 4 kcal/g).
+    /// Source is "visual" because the item originated from a model-derived pass (even if macros were repaired).
     private func backfill(item: Pass3Item, name: String, category: String?) -> MealAnalysisResult.Item {
         var carbs = item.carbs
         var fiber = item.fiber
@@ -904,12 +920,14 @@ nonisolated final class AIService: Sendable {
             fat: item.fat,
             fiber: fiber,
             sugar: sugar,
-            waterMl: item.waterMl
+            waterMl: item.waterMl,
+            weightSource: "visual"
         )
     }
 
     /// Build a complete item entirely from baseline USDA values (used when a pass dropped the item).
-    private func baselineItem(name: String, preparation: String, grams: Double, category: String?) -> MealAnalysisResult.Item {
+    /// Source defaults to "default" because the weight was not derived from the model's visual estimate.
+    private func baselineItem(name: String, preparation: String, grams: Double, category: String?, weightSource: String = "default") -> MealAnalysisResult.Item {
         let profile = FoodBaseline.profile(forName: name, category: category)
         let g = grams > 0 ? grams : 100
         let factor = g / 100
@@ -923,7 +941,8 @@ nonisolated final class AIService: Sendable {
             fat: round1(profile.fatPer100 * factor),
             fiber: round1(profile.fiberPer100 * factor),
             sugar: round1(profile.sugarPer100 * factor),
-            waterMl: 0
+            waterMl: 0,
+            weightSource: weightSource
         )
     }
 

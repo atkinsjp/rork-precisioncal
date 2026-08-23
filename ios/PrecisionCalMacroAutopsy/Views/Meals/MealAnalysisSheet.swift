@@ -10,6 +10,7 @@ struct MealAnalysisSheet: View {
     @State private var showRipple: Bool = false
     @State private var showEdit: Bool = false
     @State private var macroExpanded: Bool = false
+    @State private var sourceItem: MealItem? = nil
 
     var body: some View {
         ZStack {
@@ -370,13 +371,27 @@ struct MealAnalysisSheet: View {
                                 .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
                         }
                         Spacer()
-                        Text("\(Int(item.calories)) calories")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+                        HStack(spacing: 6) {
+                            Text("\(Int(item.calories)) calories")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+                            Button {
+                                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                                sourceItem = item
+                            } label: {
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                            }
+                        }
                     }
                     .padding(14)
                 }
             }
+        }
+        .popover(item: $sourceItem) { item in
+            WeightSourcePopover(item: item)
+                .presentationDetents([.height(160)])
         }
     }
 
@@ -574,6 +589,38 @@ struct MicronutrientRow: View {
             withAnimation(.spring(response: 0.7, dampingFraction: 0.85)) {
                 appeared = true
             }
+        }
+    }
+}
+
+// MARK: - Weight Source Popover
+
+struct WeightSourcePopover: View {
+    let item: MealItem
+
+    private var isVisual: Bool { item.weightSource.lowercased() == "visual" }
+
+    var body: some View {
+        ZStack {
+            MeshBackground()
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: isVisual ? "eye" : "ruler")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+                    Text(isVisual ? "Visually estimated" : "Reference weight")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                }
+                Text(isVisual
+                    ? "The \(Int(item.grams))g weight for this item was estimated from the photo using portion analysis."
+                    : "The \(Int(item.grams))g weight for this item came from a standard reference portion because the photo estimate was unavailable or unreliable.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(20)
         }
     }
 }

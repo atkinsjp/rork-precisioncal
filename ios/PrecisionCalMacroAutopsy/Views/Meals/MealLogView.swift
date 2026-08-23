@@ -306,7 +306,8 @@ struct MealLogView: View {
                 fat: it.fat,
                 fiber: it.fiber,
                 sugar: it.sugar,
-                waterMl: it.waterMl
+                waterMl: it.waterMl,
+                weightSource: it.weightSource
             )
             item.meal = meal
             meal.items.append(item)
