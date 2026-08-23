@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct MealAnalysisSheet: View {
     @Bindable var meal: Meal
@@ -11,6 +12,9 @@ struct MealAnalysisSheet: View {
     @State private var showEdit: Bool = false
     @State private var macroExpanded: Bool = false
     @State private var sourceItem: MealItem? = nil
+    @State private var showAddMissing: Bool = false
+    @State private var captureCheckDismissed: Bool = false
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         ZStack {
@@ -43,6 +47,9 @@ struct MealAnalysisSheet: View {
                             micronutrientMatrixCard
                         }
                         itemsList
+                        if meal.status == "complete" && !captureCheckDismissed {
+                            captureCheckCard
+                        }
                     } else if !quickItems.isEmpty {
                         quickItemsList
                     } else {
@@ -105,6 +112,70 @@ struct MealAnalysisSheet: View {
             EditMealView(meal: meal)
                 .presentationDetents([.large])
         }
+        .sheet(isPresented: $showAddMissing) {
+            AddMissingItemView(meal: meal)
+                .presentationDetents([.medium, .large])
+                .presentationContentInteraction(.scrolls)
+        }
+    }
+
+    // MARK: - Capture Check
+
+    private var captureCheckCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "questionmark.bubble.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+                    Text("Did I capture everything?")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                }
+                Text("Review the plate — if anything on it isn't listed above, add it and your totals will update instantly.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                    showAddMissing = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Add missing item")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(PrecisionCalMacroAutopsyTheme.terracotta, in: .rect(cornerRadius: 14))
+                }
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        captureCheckDismissed = true
+                    }
+                } label: {
+                    Text("Yes, all good")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(PrecisionCalMacroAutopsyTheme.glassStroke, lineWidth: 1)
+                        )
+                }
+            }
+            .padding(18)
+        }
+        .transition(.asymmetric(
+            insertion: .opacity.combined(with: .move(edge: .bottom)),
+            removal: .opacity
+        ))
     }
 
     private var headerImage: some View {
@@ -689,23 +760,23 @@ struct MicronutrientRow: View {
 struct WeightSourcePopover: View {
     let item: MealItem
 
-    private var isVisual: Bool { item.weightSource.lowercased() == "visual" }
+    private var source: WeightSourceKind {
+        WeightSourceKind(rawValue: item.weightSource.lowercased()) ?? .defaultRef
+    }
 
     var body: some View {
         ZStack {
             MeshBackground()
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 10) {
-                    Image(systemName: isVisual ? "eye" : "ruler")
+                    Image(systemName: source.iconName)
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
-                    Text(isVisual ? "Visually estimated" : "Reference weight")
+                    Text(source.title)
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
                 }
-                Text(isVisual
-                    ? "The \(Int(item.grams))g weight for this item was estimated from the photo using portion analysis."
-                    : "The \(Int(item.grams))g weight for this item came from a standard reference portion because the photo estimate was unavailable or unreliable.")
+                Text(source.explanation(forGrams: item.grams))
                     .font(.system(size: 14))
                     .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -713,5 +784,235 @@ struct WeightSourcePopover: View {
             }
             .padding(20)
         }
+    }
+}
+
+enum WeightSourceKind: String {
+    case visual
+    case defaultRef = "default"
+    case manual
+
+    var iconName: String {
+        switch self {
+        case .visual: return "eye"
+        case .defaultRef: return "ruler"
+        case .manual: return "pencil.line"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .visual: return "Visually estimated"
+        case .defaultRef: return "Reference weight"
+        case .manual: return "Manually added"
+        }
+    }
+
+    func explanation(forGrams grams: Double) -> String {
+        switch self {
+        case .visual:
+            return "The \(Int(grams))g weight for this item was estimated from the photo using portion analysis."
+        case .defaultRef:
+            return "The \(Int(grams))g weight for this item came from a standard reference portion because the photo estimate was unavailable or unreliable."
+        case .manual:
+            return "You added this item yourself — the \(Int(grams))g weight and its macros come from the USDA reference profile for that food."
+        }
+    }
+}
+
+// MARK: - Add Missing Item
+
+struct AddMissingItemView: View {
+    @Bindable var meal: Meal
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var name: String = ""
+    @State private var gramsText: String = ""
+    @State private var gramsEdited: Bool = false
+    @FocusState private var nameFocused: Bool
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var grams: Double { Double(gramsText.replacingOccurrences(of: ",", with: ".")) ?? 0 }
+    private var canAdd: Bool { !trimmedName.isEmpty && grams > 0 }
+
+    private var profile: FoodMacroProfile { FoodBaseline.profile(forName: trimmedName, category: nil) }
+
+    private var previewRows: [(String, Double, Color)] {
+        [
+            ("Calories", grams * profile.kcalPer100 / 100, PrecisionCalMacroAutopsyTheme.textPrimary),
+            ("Protein", grams * profile.proteinPer100 / 100, PrecisionCalMacroAutopsyTheme.proteinColor),
+            ("Carbs", grams * profile.carbPer100 / 100, PrecisionCalMacroAutopsyTheme.carbColor),
+            ("Fat", grams * profile.fatPer100 / 100, PrecisionCalMacroAutopsyTheme.fatColor),
+        ]
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("ADD MISSING ITEM")
+                            .font(.system(size: 12, weight: .semibold))
+                            .tracking(2.5)
+                            .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
+                        Text("What's on the plate?")
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                        Text("Tell me what I missed. I'll estimate its macros from USDA reference data and update the meal totals.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+                            .lineSpacing(2)
+                    }
+                    .padding(.horizontal, 4)
+
+                    GlassCard {
+                        VStack(spacing: 14) {
+                            field(label: "Food item", placeholder: "e.g. Avocado", text: $name, keyboard: .default)
+                                .focused($nameFocused)
+                                .onChange(of: name) { _, _ in syncSuggestedGrams() }
+                            field(label: "Amount (g)", placeholder: "e.g. 100", text: $gramsText, keyboard: .decimalPad)
+                                .onChange(of: gramsText) { _, _ in
+                                    if gramsText.isEmpty { gramsEdited = false }
+                                }
+                        }
+                        .padding(14)
+                    }
+
+                    if canAdd {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("ESTIMATED IMPACT".uppercased())
+                                .font(.system(size: 11, weight: .semibold))
+                                .tracking(2)
+                                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                                .padding(.horizontal, 4)
+                            GlassCard {
+                                VStack(spacing: 0) {
+                                    ForEach(Array(previewRows.enumerated()), id: \.offset) { idx, row in
+                                        if idx > 0 { previewDivider }
+                                        HStack {
+                                            Text(row.0)
+                                                .font(.system(size: 13, weight: .medium))
+                                                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+                                            Spacer()
+                                            Text(row.0 == "Calories"
+                                                ? "\(Int(row.1.rounded())) kcal"
+                                                : "\(formatG(row.1))g")
+                                                .font(.system(size: 13, weight: .bold, design: .rounded))
+                                                .foregroundStyle(row.2)
+                                        }
+                                        .padding(.vertical, 9)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 6)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+
+                    PearlescentButton(action: addItem) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                            Text("Add to meal")
+                                .font(.system(size: 16, weight: .semibold))
+                        }
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                    }
+                    .opacity(canAdd ? 1 : 0.5)
+                    .disabled(!canAdd)
+                    .padding(.top, 4)
+
+                    Spacer(minLength: 30)
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .animation(.easeOut(duration: 0.25), value: canAdd)
+            }
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .background(MeshBackground().ignoresSafeArea())
+            .navigationTitle("Missing item")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+                }
+            }
+            .onAppear {
+                nameFocused = true
+                syncSuggestedGrams()
+            }
+        }
+    }
+
+    private var previewDivider: some View {
+        Rectangle()
+            .fill(PrecisionCalMacroAutopsyTheme.glassStroke.opacity(0.4))
+            .frame(height: 1)
+    }
+
+    private func field(label: String, placeholder: String, text: Binding<String>, keyboard: UIKeyboardType) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+            TextField(placeholder, text: text)
+                .keyboardType(keyboard)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.white.opacity(0.55))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(PrecisionCalMacroAutopsyTheme.terracotta.opacity(0.18), lineWidth: 1)
+                )
+        }
+    }
+
+    /// Prefill grams from a known unit reference (e.g. one egg ≈ 50g) unless the user typed a value.
+    private func syncSuggestedGrams() {
+        guard !gramsEdited, !trimmedName.isEmpty,
+              let unitGrams = UnitReference.gramsPerUnit(forName: trimmedName) else { return }
+        gramsText = String(Int(unitGrams))
+    }
+
+    private func formatG(_ v: Double) -> String {
+        if v >= 10 || v == v.rounded() { return String(Int(v.rounded())) }
+        return String(format: "%.1f", v)
+    }
+
+    private func addItem() {
+        guard canAdd else { return }
+        let factor = grams / 100
+        let item = MealItem(
+            name: trimmedName.capitalized,
+            preparation: "manually added",
+            grams: grams,
+            calories: profile.kcalPer100 * factor,
+            protein: profile.proteinPer100 * factor,
+            carbs: profile.carbPer100 * factor,
+            fat: profile.fatPer100 * factor,
+            fiber: profile.fiberPer100 * factor,
+            sugar: profile.sugarPer100 * factor,
+            waterMl: 0,
+            weightSource: WeightSourceKind.manual.rawValue
+        )
+        item.meal = meal
+        meal.totalCalories += item.calories
+        meal.totalProtein += item.protein
+        meal.totalCarbs += item.carbs
+        meal.totalFat += item.fat
+        meal.totalFiber += item.fiber
+        meal.totalSugar += item.sugar
+        try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        dismiss()
     }
 }
