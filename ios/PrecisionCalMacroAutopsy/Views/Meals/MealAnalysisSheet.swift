@@ -33,6 +33,7 @@ struct MealAnalysisSheet: View {
                     if meal.status == "failed" {
                         failureCard
                     } else if !meal.items.isEmpty {
+                        macroTotalsCard
                         nutritionSummary
                         if meal.lipidSheenDetected && meal.hiddenFatAddedCalories > 0 {
                             hiddenFatAlertCard
@@ -204,6 +205,61 @@ struct MealAnalysisSheet: View {
             }
             .padding(20)
         }
+    }
+
+    // MARK: - Plate Macro Totals
+
+    private var macroTotalsCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    sectionLabel("Plate Macro Totals")
+                    Spacer()
+                    Text("\(meal.items.count) item\(meal.items.count == 1 ? "" : "s")")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                }
+                HStack(spacing: 0) {
+                    MacroTotalStat(
+                        label: "Protein",
+                        grams: meal.totalProtein,
+                        kcalPct: macroKcalShare.protein,
+                        color: PrecisionCalMacroAutopsyTheme.proteinColor
+                    )
+                    macroTotalDivider
+                    MacroTotalStat(
+                        label: "Carbs",
+                        grams: meal.totalCarbs,
+                        kcalPct: macroKcalShare.carbs,
+                        color: PrecisionCalMacroAutopsyTheme.carbColor
+                    )
+                    macroTotalDivider
+                    MacroTotalStat(
+                        label: "Fat",
+                        grams: meal.totalFat,
+                        kcalPct: macroKcalShare.fat,
+                        color: PrecisionCalMacroAutopsyTheme.fatColor
+                    )
+                }
+            }
+            .padding(18)
+        }
+    }
+
+    /// Share of calories contributed by each macro (Atwater: 4/4/9 kcal per gram).
+    private var macroKcalShare: (protein: Double, carbs: Double, fat: Double) {
+        let proteinKcal = meal.totalProtein * 4
+        let carbsKcal = meal.totalCarbs * 4
+        let fatKcal = meal.totalFat * 9
+        let total = proteinKcal + carbsKcal + fatKcal
+        guard total > 0 else { return (0, 0, 0) }
+        return (proteinKcal / total, carbsKcal / total, fatKcal / total)
+    }
+
+    private var macroTotalDivider: some View {
+        Rectangle()
+            .fill(PrecisionCalMacroAutopsyTheme.glassStroke.opacity(0.5))
+            .frame(width: 1, height: 40)
     }
 
     private var nutritionSummary: some View {
@@ -483,6 +539,41 @@ struct IdentifiedItemRow: View {
         .offset(x: appeared ? 0 : -20)
         .onAppear {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(delay)) {
+                appeared = true
+            }
+        }
+    }
+}
+
+struct MacroTotalStat: View {
+    let label: String
+    let grams: Double
+    let kcalPct: Double
+    let color: Color
+    @State private var appeared = false
+
+    var body: some View {
+        VStack(spacing: 4) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 7, height: 7)
+                Text(label)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+            }
+            Text("\(Int(grams.rounded()))g")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
+                .contentTransition(.numericText())
+            Text("\(Int((kcalPct * 100).rounded()))% of kcal")
+                .font(.system(size: 11))
+                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .opacity(appeared ? 1 : 0)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.5).delay(0.1)) {
                 appeared = true
             }
         }
