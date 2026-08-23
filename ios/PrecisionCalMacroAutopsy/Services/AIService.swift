@@ -461,6 +461,7 @@ nonisolated final class AIService: Sendable {
             print("[AIService] Pass1 (Isolation) returned no items — falling back to single-shot analysis.")
             return try await singleShotFallback(base64: base64, onProgress: onProgress)
         }
+        let p1ForFallback = p1  // capture for fallback routes that need the canonical item list
         let title = (p1.title?.isEmpty == false ? p1.title! : defaultTitle(from: p1.items))
         onProgress(.pass1Identified(items: p1.items.map { $0.name }, title: title))
 
@@ -485,7 +486,7 @@ nonisolated final class AIService: Sendable {
             p2 = anchorDiscreteWeights(p1Items: p1.items, weights: p2Raw)
         } catch {
             print("[AIService] Pass4 (Dimensional) failed (\(error)) — falling back to single-shot.")
-            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+            return try await singleShotFallback(base64: base64, p1: p1ForFallback, p2: nil, onProgress: onProgress)
         }
         onProgress(.pass4Weighed)
 
@@ -495,7 +496,7 @@ nonisolated final class AIService: Sendable {
             p3 = try await runPass3(p1: p1, p2: p2)
         } catch {
             print("[AIService] Pass5 (Comparison) failed (\(error)) — falling back to single-shot.")
-            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+            return try await singleShotFallback(base64: base64, p1: p1ForFallback, p2: p2, onProgress: onProgress)
         }
         onProgress(.pass5Mapped)
 
@@ -505,11 +506,11 @@ nonisolated final class AIService: Sendable {
             p4 = try await runPass4(p1: p1, p3: p3)
         } catch {
             print("[AIService] Pass6 (Synthesis) failed (\(error)) — falling back to single-shot.")
-            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+            return try await singleShotFallback(base64: base64, p1: p1ForFallback, p2: p2, onProgress: onProgress)
         }
         guard !p4.items.isEmpty else {
             print("[AIService] Pass6 (Synthesis) returned no items — falling back to single-shot.")
-            return try await singleShotFallback(base64: base64, onProgress: onProgress)
+            return try await singleShotFallback(base64: base64, p1: p1ForFallback, p2: p2, onProgress: onProgress)
         }
 
         // Consolidate the verified lipid adjustments (discovered in Pass 2, confirmed in Pass 3)
@@ -594,13 +595,44 @@ nonisolated final class AIService: Sendable {
 
     /// Fallback: ask the model to produce the full report in one shot. Used when the 6-pass chain fails.
     /// Still sequences across all 6 events so the UI advances cleanly from 1 → 6.
+    /// If the earlier chain already enumerated items (p1) and/or estimated weights (p2), those
+    /// are passed through so the final result can be rebuilt against the Pass 1 canonical list —
+    /// no identified item is silently dropped.
     private func singleShotFallback(
         base64: String,
+        p1: Pass1Output? = nil,
+        p2: Pass2Output? = nil,
         onProgress: @escaping @Sendable (AnalysisEvent) -> Void
     ) async throws -> MealAnalysisResult {
-        let result = try await runFullAnalysis(base64: base64) { items, title in
+        var result = try await runFullAnalysis(base64: base64, p1: p1) { items, title in
             onProgress(.pass1Identified(items: items, title: title))
         }
+        // If the chain already identified items, ensure the single-shot result keeps every one of them.
+        let finalized = finalizeItems(
+            p1Items: p1?.items ?? [],
+            weights: p2?.items ?? [],
+            modelItems: result.items
+        )
+        if finalized.count != result.items.count {
+            print("[AIService] Single-shot fallback recovered \(finalized.count - result.items.count) dropped item(s).")
+        }
+        result = MealAnalysisResult(
+            title: result.title,
+            items: finalized,
+            metabolicImpact: result.metabolicImpact,
+            mealScore: result.mealScore,
+            qcNotes: result.qcNotes,
+            lipidSheenDetected: result.lipidSheenDetected,
+            lipidNote: result.lipidNote,
+            saturatedFat: result.saturatedFat,
+            unsaturatedFat: result.unsaturatedFat,
+            transFat: result.transFat,
+            hiddenFatAddedCalories: result.hiddenFatAddedCalories,
+            hiddenFatAddedFatG: result.hiddenFatAddedFatG,
+            hiddenFatTargetItem: result.hiddenFatTargetItem,
+            hiddenFatMechanism: result.hiddenFatMechanism,
+            micronutrients: result.micronutrients
+        )
         onProgress(.pass2LipidDiscovered)
         onProgress(.pass3LipidVerified)
         onProgress(.pass4Weighed)
@@ -696,31 +728,44 @@ nonisolated final class AIService: Sendable {
         weights: [Pass2Item],
         mapped: [Pass3Item]
     ) -> [MealAnalysisResult.Item] {
+        let modelItems = mapped.map { backfill(item: $0, name: $0.name, category: nil) }
+        return finalizeItems(p1Items: p1Items, weights: weights, modelItems: modelItems)
+    }
+
+    /// Ensure the final item list contains every item identified in Pass 1, using model-derived
+    /// nutrition when a name match exists and reconstructing any missing item from its best
+    /// available weight (Pass 2 → discrete unit reference → category default) plus the USDA baseline.
+    /// This is the ultimate source-of-truth guardrail: no identified food may be dropped.
+    private func finalizeItems(
+        p1Items: [Pass1Item],
+        weights: [Pass2Item],
+        modelItems: [MealAnalysisResult.Item]
+    ) -> [MealAnalysisResult.Item] {
         var output: [MealAnalysisResult.Item] = []
-        var consumed = [Bool](repeating: false, count: mapped.count)
+        var consumed = [Bool](repeating: false, count: modelItems.count)
 
         for p1 in p1Items {
             var matchIdx: Int? = nil
-            for i in mapped.indices where !consumed[i] {
-                if matchName(mapped[i].name, p1.name) { matchIdx = i; break }
+            for i in modelItems.indices where !consumed[i] {
+                if matchName(modelItems[i].name, p1.name) { matchIdx = i; break }
             }
             if let i = matchIdx {
                 consumed[i] = true
-                output.append(backfill(item: mapped[i], name: p1.name, category: p1.category))
+                output.append(modelItems[i])
             } else {
                 // Item enumerated in Pass 1 but dropped by the nutrition passes — rebuild it.
                 let grams = weights.first { matchName($0.name, p1.name) }?.estimatedWeightG
                     ?? discreteAnchoredGrams(for: p1)
                     ?? FoodBaseline.defaultGrams(category: p1.category)
-                print("[AIService] Reconcile: re-attaching dropped item '\(p1.name)' (\(Int(grams))g) from baseline.")
+                print("[AIService] Finalize: re-attaching dropped item '\(p1.name)' (\(Int(grams))g) from baseline.")
                 output.append(baselineItem(name: p1.name, preparation: p1.preparation, grams: grams, category: p1.category))
             }
         }
-        // Preserve any mapped item that didn't match a Pass 1 entry (rare).
-        for i in mapped.indices where !consumed[i] {
-            output.append(backfill(item: mapped[i], name: mapped[i].name, category: nil))
+        // Preserve any model-returned item that didn't match a Pass 1 entry (rare).
+        for i in modelItems.indices where !consumed[i] {
+            output.append(modelItems[i])
         }
-        return output.isEmpty ? mapped.map { backfill(item: $0, name: $0.name, category: nil) } : output
+        return output.isEmpty ? modelItems : output
     }
 
     /// Convert a mapped nutrition item into a final item, backfilling zeroed carbohydrate macros
@@ -781,14 +826,25 @@ nonisolated final class AIService: Sendable {
 
     private func runFullAnalysis(
         base64: String,
+        p1: Pass1Output? = nil,
         onItemsIdentified: @Sendable @escaping ([String], String) -> Void
     ) async throws -> MealAnalysisResult {
+        let identifiedContext: String = {
+            guard let p1, !p1.items.isEmpty else { return "" }
+            let list = p1.items.map { "- \($0.name)" }.joined(separator: "\n")
+            return """
+
+            CANONICAL ITEM LIST — these items were already identified in the meal. You MUST return ALL of them in your final JSON, each as its own entry with a real gram weight and full nutrition. Do not merge any of these into another item, do not drop "minor" items, and do not return fewer items than listed:
+            \(list)
+            """
+        }()
         let system = """
         You are PrecisionCalMacroAutopsy, a senior nutritionist with computer-vision expertise. Analyze the meal photo end-to-end:
-        1. EXHAUSTIVELY identify every distinct food item, side, vegetable, starch, sauce, dip, garnish, and condiment visible. Do NOT collapse sides into the main dish. Typical plates have 3–6 items; if you only see one, look again for missed carbs/vegetables/sauces.
+        1. EXHAUSTIVELY identify every distinct food item, side, vegetable, starch, sauce, dip, garnish, and condiment visible. Do NOT collapse sides into the main dish. Typical plates have 3–6 items; if you only see one, look again for missed carbs/vegetables/sauces.\(identifiedContext)
         2. Estimate gram weights from plate size and depth cues. Use density constants (g/cm^3): chicken 1.05, beef 1.05, fish 1.0, rice 0.85, pasta 1.10, bread 0.30, oil 0.92, butter 0.91, leafy veg 0.30, root veg 0.65, beans 1.20, cheese 1.10, fruit 0.85. For DISCRETE countable foods (pancakes, waffles, eggs, bread slices, burger patties, sausages, whole fruit), COUNT the units and compute unit weight × count (e.g. 4 medium pancakes ≈ 4 × 60g = 240g) — never treat a multi-unit stack as one unconstrained mass.
         3. Map weights to USDA FoodData Central nutrition. Account for prep (frying adds oil; grilling does not). Fiber and sugar MUST be non-zero for plant foods (carrots ~2.8g fiber/100g, potatoes ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, BBQ sauce ~25g sugar/100g, fruit ~2–10g sugar/100g). Returning 0 fiber and 0 sugar on a meal with vegetables/starch/fruit/sauce is a BUG.
         4. QC: kcal/g should be 0.5 to 6 for most foods, 9 for pure oil, 0.2 to 0.4 for leafy veg. Reconcile macros (4/4/9 kcal per g). Adjust water for cooking method. Cooked chicken breast is ~31g protein/100g — do not over-attribute protein.
+        ITEM CONTINUITY GUARANTEE: The final JSON must contain a separate `items` entry for every food you can see. A breakfast plate with toast, avocado, egg, and seasonings must return four or more items, not one merged "toast" entry.
         Score the meal 0 to 100 on protein adequacy, fiber, sugar load, prep, and balance.
         metabolicImpact must be ONE short label like "Steady energy", "Quick spike", "Slow burn", "Recovery boost", or "Light & lean".
         qcNotes is ONE concise sentence.
@@ -871,6 +927,7 @@ nonisolated final class AIService: Sendable {
         - Visible cooking fats (oil sheen, butter)
         - Beverages if shown
         Minimum expectation: typical restaurant plates have 3–6 distinct items. If you only see one, you are almost certainly missing sides — look again.
+        **EXAMPLE:** A photo of avocado toast with a fried egg and red pepper flakes must produce at least four separate items: the toast, the avocado spread, the fried egg, and the chili/pepper seasoning. Do not merge them into a single "toast" entry.
 
         DISCRETE UNIT COUNTING — MANDATORY for countable foods:
         - For any food that comes in distinct units (pancakes, waffles, crepes, eggs, slices of bread/toast, burger/sandwich patties, sausages, meatballs, nuggets, wings, drumsticks, cookies, muffins, donuts, whole fruit, scoops), set "isDiscrete": true and count the units EXACTLY in "discreteCount". COUNT every unit: a stack of pancakes is 4 pancakes, not one mass. If units are cut or partially hidden, estimate the nearest whole-unit equivalent.
@@ -1036,6 +1093,7 @@ nonisolated final class AIService: Sendable {
 
     private func runPass4(p1: Pass1Output, p3: Pass3Output) async throws -> Pass4Output {
         let nutritionJSON = (try? String(data: JSONEncoder().encode(p3.items), encoding: .utf8)) ?? "[]"
+        let p1Names = p1.items.map { "- \($0.name)" }.joined(separator: "\n")
         let system = """
         You are PrecisionCalMacroAutopsy Pass 4 — Senior Nutritionist QC. Audit prior passes and produce the final verified report.
         Sanity checks:
@@ -1044,7 +1102,7 @@ nonisolated final class AIService: Sendable {
         - Adjust water content for cooking method (frying reduces water).
         - FIBER/SUGAR AUDIT: any plant food (vegetable, fruit, whole grain, legume, nut, seed, sauce with produce) MUST have non-zero fiber and/or sugar consistent with USDA. If Pass 3 returned 0 for a plant item, CORRECT it using USDA values: carrots ~2.8g fiber/100g, potato ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, lemon ~2.8g/100g, BBQ sauce ~25g sugar/100g, etc. Returning 0 fiber on a meal that contains vegetables, fruit, or starch is INCORRECT — fix it.
         - PROTEIN AUDIT: cooked chicken breast is ~31g protein per 100g. Do not over-attribute protein.
-        - ITEM CONTINUITY: Preserve EVERY item from Pass 3 — same count, same names. Never merge sides into the entrée or drop a starch/vegetable/fruit/sauce. A meal titled with potatoes/rice/carrots that returns only the protein item is a BUG.
+        - ITEM CONTINUITY (CRITICAL): Preserve EVERY item from Pass 3 — same count, same names. The canonical Pass 1 enumeration is:\n\(p1Names)\nYour final JSON must include a separate entry for every item in that list. Never merge sides into the entrée or drop a starch/vegetable/fruit/sauce. A meal that visually contains toast, avocado, egg, and seasonings but returns only "toast" is a BUG and must be corrected.
         - GRAM LOCK: Gram weights from Pass 3 are anchored to discrete unit counts (unit weight × count, e.g. 4 medium pancakes ≈ 240g). Keep them UNCHANGED unless a kcal/g sanity check fails — never rescale a multi-unit item as one unconstrained mass.
         - CARB INTEGRITY RULE: You must ensure the total carbohydrates, sugars, and fibers of identified starch/carb sources (e.g. potatoes, rice, pasta, bread) are mathematically present and fully represented. Never compress carbohydrate subcategories to 0 unless the item is an isolated fat or pure protein source.
         Compute:
