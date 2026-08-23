@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import AVFoundation
 
 struct MealLogView: View {
     @Environment(\.modelContext) private var modelContext
@@ -9,6 +10,8 @@ struct MealLogView: View {
     @Query(sort: \Meal.createdAt, order: .reverse) private var meals: [Meal]
 
     @State private var showCapture = false
+    @State private var showSourceDialog = false
+    @State private var showCamera = false
     @State private var showManualEntry = false
     @State private var pickerItem: PhotosPickerItem?
     @State private var pickedImage: UIImage?
@@ -21,6 +24,16 @@ struct MealLogView: View {
     @State private var editingMeal: Meal?
 
     private var canScan: Bool { store.hasAccess }
+
+    /// Discovery includes `.external` so an injected webcam is found in preview.
+    private var cameraAvailable: Bool {
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .external],
+            mediaType: .video,
+            position: .back
+        )
+        return !discovery.devices.isEmpty
+    }
 
     var body: some View {
         ZStack {
@@ -76,6 +89,22 @@ struct MealLogView: View {
             }
         }
         .photosPicker(isPresented: $showCapture, selection: $pickerItem, matching: .images, photoLibrary: .shared())
+        .confirmationDialog("Snap a meal", isPresented: $showSourceDialog, titleVisibility: .visible) {
+            if cameraAvailable {
+                Button("Take Photo") { showCamera = true }
+            }
+            Button("Choose from Library") { showCapture = true }
+            Button("Cancel", role: .cancel) {}
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            MealCameraScreen(
+                onCapture: { data in
+                    showCamera = false
+                    Task { await startAnalysis(imageData: data) }
+                },
+                onCancel: { showCamera = false }
+            )
+        }
         .sheet(isPresented: $showManualEntry) {
             ManualMealEntryView()
                 .presentationDetents([.large])
@@ -136,7 +165,7 @@ struct MealLogView: View {
                 Text("Snap a meal")
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
-                Text("PrecisionCalMacroAutopsy sees ingredients, prep,\nportions, and lipid sheen in 5 passes.")
+                Text("PrecisionCalMacroAutopsy sees ingredients, prep,\nportions, and lipid sheen in 6 passes.")
                     .font(.system(size: 14))
                     .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
                     .multilineTextAlignment(.center)
@@ -144,16 +173,16 @@ struct MealLogView: View {
 
                 PearlescentButton(action: {
                     if canScan {
-                        showCapture = true
+                        showSourceDialog = true
                     } else {
                         UIImpactFeedbackGenerator(style: .soft).impactOccurred()
                         showPaywall = true
                     }
                 }) {
                     HStack(spacing: 10) {
-                        Image(systemName: canScan ? "photo.on.rectangle.angled" : "lock.fill")
+                        Image(systemName: canScan ? "camera" : "lock.fill")
                             .font(.system(size: 16, weight: .semibold))
-                        Text(canScan ? "Choose photo" : "Unlock unlimited scans")
+                        Text(canScan ? "Snap or choose photo" : "Unlock unlimited scans")
                             .font(.system(size: 16, weight: .semibold))
                     }
                     .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)

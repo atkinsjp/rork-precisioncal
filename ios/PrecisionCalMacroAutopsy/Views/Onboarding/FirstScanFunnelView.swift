@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import AVFoundation
 import AuthenticationServices
 import RevenueCat
 
@@ -16,6 +17,8 @@ struct FirstScanFunnelView: View {
 
     @State private var pickerItem: PhotosPickerItem?
     @State private var showPicker = false
+    @State private var showSourceDialog = false
+    @State private var showCamera = false
     @State private var currentPass: Int = 1
     @State private var quickItems: [String] = []
     @State private var analysisError: String?
@@ -63,10 +66,36 @@ struct FirstScanFunnelView: View {
         }
         .animation(.easeInOut(duration: 0.45), value: stage)
         .photosPicker(isPresented: $showPicker, selection: $pickerItem, matching: .images, photoLibrary: .shared())
+        .confirmationDialog("Scan your first meal", isPresented: $showSourceDialog, titleVisibility: .visible) {
+            if cameraAvailable {
+                Button("Take Photo") { showCamera = true }
+            }
+            Button("Choose from Library") { showPicker = true }
+            Button("Cancel", role: .cancel) {}
+        }
+        .fullScreenCover(isPresented: $showCamera) {
+            MealCameraScreen(
+                onCapture: { data in
+                    showCamera = false
+                    beginAnalysis(with: data)
+                },
+                onCancel: { showCamera = false }
+            )
+        }
         .onChange(of: pickerItem) { _, newItem in
             guard let newItem else { return }
             Task { await loadAndStart(item: newItem) }
         }
+    }
+
+    /// Discovery includes `.external` so an injected webcam is found in preview.
+    private var cameraAvailable: Bool {
+        let discovery = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInWideAngleCamera, .external],
+            mediaType: .video,
+            position: .back
+        )
+        return !discovery.devices.isEmpty
     }
 
     private func setStage(_ newStage: OnboardingFunnelStage) {
@@ -133,7 +162,7 @@ struct FirstScanFunnelView: View {
 
             PearlescentButton(action: {
                 analysisError = nil
-                showPicker = true
+                showSourceDialog = true
             }) {
                 HStack(spacing: 10) {
                     Image(systemName: "camera.fill")
@@ -332,6 +361,16 @@ struct FirstScanFunnelView: View {
         defer { pickerItem = nil }
         guard let data = try? await item.loadTransferable(type: Data.self),
               UIImage(data: data) != nil else {
+            analysisError = "Couldn't read that photo. Please try another."
+            return
+        }
+        beginAnalysis(with: data)
+    }
+
+    /// Insert the captured/picked image as the funnel meal and advance to analysis.
+    @MainActor
+    private func beginAnalysis(with data: Data) {
+        guard UIImage(data: data) != nil else {
             analysisError = "Couldn't read that photo. Please try another."
             return
         }
