@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// In-app renderer for Privacy Policy and Terms of Service so the links always
-/// work, regardless of whether the marketing site is live. Falls back to the
-/// hosted URL via a "View on web" link at the bottom for users who prefer it.
+/// In-app renderer for Privacy Policy and Terms of Service. The full legal
+/// text is bundled with the app, so the documents are always available.
 struct LegalDocumentView: View {
     enum Kind: Identifiable {
         case privacy
@@ -28,13 +27,6 @@ struct LegalDocumentView: View {
             case .terms: return "TERMS"
             }
         }
-
-        var webURL: URL? {
-            switch self {
-            case .privacy: return URL(string: "https://precisioncal.app/privacy.html")
-            case .terms: return URL(string: "https://precisioncal.app/terms.html")
-            }
-        }
     }
 
     let kind: Kind
@@ -52,17 +44,6 @@ struct LegalDocumentView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
                         .padding(.top, 4)
-                    if let url = kind.webURL {
-                        Link(destination: url) {
-                            HStack(spacing: 8) {
-                                Image(systemName: "safari")
-                                Text("View on web")
-                                    .font(.system(size: 13, weight: .semibold))
-                            }
-                            .foregroundStyle(PrecisionCalMacroAutopsyTheme.terracotta)
-                        }
-                        .padding(.top, 4)
-                    }
                     Spacer(minLength: 24)
                 }
                 .padding(.horizontal, 20)
