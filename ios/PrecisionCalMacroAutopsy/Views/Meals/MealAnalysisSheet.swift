@@ -47,13 +47,16 @@ struct MealAnalysisSheet: View {
                             micronutrientMatrixCard
                         }
                         itemsList
-                        if meal.status == "complete" && !captureCheckDismissed {
-                            captureCheckCard
-                        }
                     } else if !quickItems.isEmpty {
                         quickItemsList
+                    } else if meal.status == "complete" {
+                        emptyItemsCard
                     } else {
                         scanningPlaceholder
+                    }
+
+                    if meal.status == "complete" && !captureCheckDismissed {
+                        captureCheckCard
                     }
 
                     Spacer(minLength: 40)
@@ -487,6 +490,9 @@ struct MealAnalysisSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionLabel("Items")
             ForEach(meal.items) { item in
+                SwipeToDeleteRow {
+                    deleteItem(item)
+                } content: {
                 GlassCard(cornerRadius: 16) {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
@@ -514,11 +520,42 @@ struct MealAnalysisSheet: View {
                     }
                     .padding(14)
                 }
+                }
             }
         }
         .popover(item: $sourceItem) { item in
             WeightSourcePopover(item: item)
                 .presentationDetents([.height(160)])
+        }
+    }
+
+    /// Removes a misidentified item and rolls its contribution out of the meal totals.
+    private func deleteItem(_ item: MealItem) {
+        meal.totalCalories -= item.calories
+        meal.totalProtein -= item.protein
+        meal.totalCarbs -= item.carbs
+        meal.totalFat -= item.fat
+        meal.totalFiber -= item.fiber
+        meal.totalSugar -= item.sugar
+        meal.waterContentMl -= item.waterMl
+        modelContext.delete(item)
+        try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+
+    private var emptyItemsCard: some View {
+        GlassCard {
+            HStack(spacing: 14) {
+                Image(systemName: "fork.knife")
+                    .font(.system(size: 20))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                Text("No items left on this plate. Add one below if the scan missed something.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(PrecisionCalMacroAutopsyTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+            }
+            .padding(18)
         }
     }
 
@@ -751,6 +788,90 @@ struct MicronutrientRow: View {
             withAnimation(.spring(response: 0.7, dampingFraction: 0.85)) {
                 appeared = true
             }
+        }
+    }
+}
+
+// MARK: - Swipe To Delete Row
+
+/// Wraps a row so a leftward swipe reveals a delete action (or deletes outright
+/// when flicked far enough). Vertical drags are ignored so ScrollView panning wins.
+struct SwipeToDeleteRow<Content: View>: View {
+    let onDelete: () -> Void
+    @ViewBuilder let content: () -> Content
+
+    @State private var offset: CGFloat = 0
+    @State private var settledOffset: CGFloat = 0
+    @State private var hapticFired: Bool = false
+
+    private let revealWidth: CGFloat = 88
+    private let overshoot: CGFloat = 56
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            deleteButton
+                .opacity(offset < -revealWidth * 0.4 ? 1 : 0)
+
+            content()
+                .offset(x: offset)
+                .simultaneousGesture(dragGesture)
+        }
+    }
+
+    private var deleteButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            reset()
+            onDelete()
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: "trash.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                Text("Delete")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(.white)
+            .frame(width: revealWidth)
+            .frame(maxHeight: .infinity)
+            .background(PrecisionCalMacroAutopsyTheme.fatColor, in: .rect(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                let proposed = settledOffset + value.translation.width
+                offset = min(0, max(-(revealWidth + overshoot), proposed))
+                if offset < -revealWidth, !hapticFired {
+                    hapticFired = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            }
+            .onEnded { _ in
+                if offset < -(revealWidth + overshoot * 0.6) {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onDelete()
+                } else {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        if offset < -revealWidth * 0.5 {
+                            offset = -revealWidth
+                            settledOffset = -revealWidth
+                        } else {
+                            offset = 0
+                            settledOffset = 0
+                        }
+                    }
+                }
+                hapticFired = false
+            }
+    }
+
+    private func reset() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            offset = 0
+            settledOffset = 0
         }
     }
 }
