@@ -76,6 +76,10 @@ nonisolated enum FoodBaseline {
         (["egg"], .init(kcalPer100: 143, proteinPer100: 12.6, carbPer100: 1.1, fatPer100: 9.5, fiberPer100: 0.0, sugarPer100: 1.1)),
         (["tofu"], .init(kcalPer100: 76, proteinPer100: 8.0, carbPer100: 1.9, fatPer100: 4.8, fiberPer100: 0.3, sugarPer100: 0.6)),
         (["oil", "butter"], .init(kcalPer100: 884, proteinPer100: 0.0, carbPer100: 0.0, fatPer100: 100.0, fiberPer100: 0.0, sugarPer100: 0.0)),
+
+        // Water / ice — zero-calorie; must be matched explicitly so it never falls back to the
+        // generic "other" category default (which would incorrectly assign 120 kcal/100g).
+        (["water", "ice cube", "ice cubes", "ice"], .init(kcalPer100: 0, proteinPer100: 0.0, carbPer100: 0.0, fatPer100: 0.0, fiberPer100: 0.0, sugarPer100: 0.0)),
     ]
 
     /// Generic per-100g defaults keyed by the Pass 1 category.
@@ -88,7 +92,9 @@ nonisolated enum FoodBaseline {
         case "dairy": return .init(kcalPer100: 120, proteinPer100: 6.0, carbPer100: 5.0, fatPer100: 8.0, fiberPer100: 0.0, sugarPer100: 4.5)
         case "fat": return .init(kcalPer100: 884, proteinPer100: 0.0, carbPer100: 0.0, fatPer100: 100.0, fiberPer100: 0.0, sugarPer100: 0.0)
         case "protein": return .init(kcalPer100: 200, proteinPer100: 27.0, carbPer100: 0.0, fatPer100: 10.0, fiberPer100: 0.0, sugarPer100: 0.0)
-        default: return .init(kcalPer100: 120, proteinPer100: 5.0, carbPer100: 15.0, fatPer100: 4.0, fiberPer100: 1.5, sugarPer100: 3.0)
+        // Unknown / fallback categories must not invent calories. Water/ice and other no-calorie
+        // items should land here rather than getting an arbitrary 120 kcal/100g.
+        default: return .init(kcalPer100: 0, proteinPer100: 0.0, carbPer100: 0.0, fatPer100: 0.0, fiberPer100: 0.0, sugarPer100: 0.0)
         }
     }
 

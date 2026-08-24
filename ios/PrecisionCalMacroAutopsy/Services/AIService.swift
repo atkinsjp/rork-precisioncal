@@ -1176,6 +1176,7 @@ nonisolated final class AIService: Sendable {
         - NO DOUBLE LISTING. If the same food appears twice with different names, write it only once. "chicken pieces" and "orange-glazed chicken" are the SAME item. "sesame seeds" on the chicken and "sesame seeds" in a side dish are the SAME ingredient if they are identical — but if they are in clearly separate piles/bowls, you may list them twice.
         - COATINGS ARE PART OF THE ITEM. A glaze, sauce, marinade, or seasoning that coats a piece of chicken, tofu, or vegetables is NOT a separate item. Only list a sauce or glaze separately if it is a distinct puddle, side cup, or uncoated drizzle on the plate. Example: "orange glaze" on chicken should be merged into "orange-glazed chicken"; do not create a separate "orange glaze" item.
         - If a protein is coated in sauce, use the combined name (e.g. "orange-glazed chicken", "teriyaki salmon", "BBQ chicken").
+        - IGNORE WATER AND ICE. A glass of water, ice cubes, or a beverage cup is NOT a food item and has zero calories. Do not list water or ice in the numbered list.
 
         Return ONLY a numbered list like:
         1. orange-glazed chicken
