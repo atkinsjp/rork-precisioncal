@@ -1069,15 +1069,57 @@ nonisolated final class AIService: Sendable {
         return mergedFirst
     }
 
-    /// Ensures the canonical Pass 1 item list contains every food from the pre-enumeration step.
-    /// Detail passes occasionally drop small sides even when told not to; this rebuilds the missing
-    /// entries with safe defaults so downstream passes and final reconciliation have a complete list.
+    /// Ensures the canonical Pass 1 item list contains every food from the pre-enumeration step,
+    /// while collapsing duplicate or near-duplicate entries (e.g. "chicken pieces" and "orange-glazed
+    /// chicken", or a coating and the item it coats) so the same food is not counted twice.
     private func mergeEnumeration(enumerated: [String], into output: Pass1Output) -> Pass1Output {
+        var mergedNames: [String] = []
+        for name in enumerated {
+            let lower = name.lowercased().trimmingCharacters(in: .whitespaces)
+            if lower.isEmpty { continue }
+            if let existingIdx = mergedNames.firstIndex(where: { $0.lowercased().trimmingCharacters(in: .whitespaces) == lower }) {
+                continue
+            }
+            // Merge a coating into the coated item: if this name is a sub-phrase of an already-kept item
+            // (e.g. "orange glaze" inside "orange-glazed chicken") or vice versa, keep only the more
+            // specific item (the longer one). This is a last-resort safety net beyond the prompt rules.
+            if let subMatchIdx = mergedNames.firstIndex(where: { kept in
+                let keptLower = kept.lowercased().trimmingCharacters(in: .whitespaces)
+                return keptLower.contains(lower) || lower.contains(keptLower)
+            }) {
+                let kept = mergedNames[subMatchIdx].lowercased().trimmingCharacters(in: .whitespaces)
+                if lower.count > kept.count {
+                    mergedNames[subMatchIdx] = name
+                }
+                continue
+            }
+            mergedNames.append(name)
+        }
+
         var existing = output.items
         var known = Set(existing.map { $0.name.lowercased().trimmingCharacters(in: .whitespaces) })
-        for name in enumerated {
+        for name in mergedNames {
             let key = name.lowercased().trimmingCharacters(in: .whitespaces)
             if known.contains(key) { continue }
+            // If an existing item is a substring/superstring of this new item, merge into the longer name.
+            if let idx = existing.firstIndex(where: { key.contains($0.name.lowercased().trimmingCharacters(in: .whitespaces)) || $0.name.lowercased().trimmingCharacters(in: .whitespaces).contains(key) }) {
+                let existingName = existing[idx].name.lowercased().trimmingCharacters(in: .whitespaces)
+                if key.count > existingName.count {
+                    existing[idx] = Pass1Item(
+                        name: name,
+                        preparation: existing[idx].preparation,
+                        visual: existing[idx].visual,
+                        category: existing[idx].category,
+                        isDiscrete: existing[idx].isDiscrete,
+                        discreteCount: existing[idx].discreteCount,
+                        estimatedSize: existing[idx].estimatedSize,
+                        state: existing[idx].state
+                    )
+                    known.remove(existingName)
+                    known.insert(key)
+                }
+                continue
+            }
             let inferredCategory = inferCategory(for: name)
             existing.append(Pass1Item(
                 name: name,
@@ -1131,6 +1173,9 @@ nonisolated final class AIService: Sendable {
         - Do not skip small items: seeds, scallions, lemon wedges, sauces, condiments, and garnishes all count.
         - A large broccoli cluster or grain mound is a PRIMARY item, not garnish.
         - Use the exact visible food name (e.g. "orange-glazed chicken", "quinoa", "roasted broccoli", "lemon wedges", "white sesame seeds", "black sesame seeds", "scallions").
+        - NO DOUBLE LISTING. If the same food appears twice with different names, write it only once. "chicken pieces" and "orange-glazed chicken" are the SAME item. "sesame seeds" on the chicken and "sesame seeds" in a side dish are the SAME ingredient if they are identical — but if they are in clearly separate piles/bowls, you may list them twice.
+        - COATINGS ARE PART OF THE ITEM. A glaze, sauce, marinade, or seasoning that coats a piece of chicken, tofu, or vegetables is NOT a separate item. Only list a sauce or glaze separately if it is a distinct puddle, side cup, or uncoated drizzle on the plate. Example: "orange glaze" on chicken should be merged into "orange-glazed chicken"; do not create a separate "orange glaze" item.
+        - If a protein is coated in sauce, use the combined name (e.g. "orange-glazed chicken", "teriyaki salmon", "BBQ chicken").
 
         Return ONLY a numbered list like:
         1. orange-glazed chicken
