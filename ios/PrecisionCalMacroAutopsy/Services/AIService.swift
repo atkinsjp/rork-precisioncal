@@ -725,6 +725,15 @@ nonisolated final class AIService: Sendable {
                 }
             }
 
+            // Potato wedges / fries: a single wedge is ~40-70g; total plate rarely exceeds 350g.
+            let wedgeFries = ["wedge", "fries", "fry", "roasted potato"]
+            if wedgeFries.contains(where: { name.contains($0) }) {
+                clamped = min(clamped, 350)
+                if clamped != estimate {
+                    print("[AIService] Wedge/fries clamp: '\(items[idx].name)' \(Int(estimate))g → \(Int(clamped))g.")
+                }
+            }
+
             // Protein in a single meal: rarely exceeds 350g in a regular bowl/plate.
             let proteinKeywords = ["chicken", "beef", "steak", "pork", "lamb", "fish", "salmon",
                                    "tuna", "cod", "shrimp", "tofu", "tempeh", "seitan"]
@@ -762,6 +771,8 @@ nonisolated final class AIService: Sendable {
                 grams = min(grams, 80)
             } else if ["chicken", "beef", "steak", "pork", "lamb", "fish", "salmon",
                        "tuna", "cod", "shrimp", "tofu", "tempeh"].contains(where: { name.contains($0) }) {
+                grams = min(grams, 350)
+            } else if ["wedge", "fries", "fry", "roasted potato"].contains(where: { name.contains($0) }) {
                 grams = min(grams, 350)
             }
 
@@ -977,6 +988,7 @@ nonisolated final class AIService: Sendable {
         - A sauce or glaze coating is usually 15–60g total, not 100g+ unless swimming in it.
         - Grains (rice, quinoa) in a bowl are typically 120–250g cooked.
         - Vegetables such as broccoli, carrots, or peppers should reflect visual coverage: a large portion is 150–250g, not 50g.
+        - A single potato wedge or fry is ~40–70g. Five wedges should be 200–350g total, not 1kg. Count the wedges and multiply.
         3. Map weights to USDA FoodData Central nutrition. Account for prep (frying adds oil; grilling does not). Fiber and sugar MUST be non-zero for plant foods (carrots ~2.8g fiber/100g, potatoes ~2.2g/100g, broccoli ~2.6g/100g, tomato ~1.2g/100g, quinoa ~2.8g/100g, BBQ sauce ~25g sugar/100g, sesame seeds ~12g fiber/100g, fruit ~2–10g sugar/100g). Returning 0 fiber and 0 sugar on a meal with vegetables/starch/fruit/sauce is a BUG.
         4. QC: kcal/g should be 0.5 to 6 for most foods, 9 for pure oil, 0.2 to 0.4 for leafy veg. Reconcile macros (4/4/9 kcal per g). Adjust water for cooking method. Cooked chicken breast is ~31g protein/100g — do not over-attribute protein. Do not label a sauced/glazed item as "fried" unless it has visible batter/breading; glossy sauce is "glazed".
         ITEM CONTINUITY GUARANTEE: The final JSON must contain a separate `items` entry for every food you can see. A breakfast plate with toast, avocado, egg, and seasonings must return four or more items, not one merged "toast" entry. A grain bowl with chicken, quinoa, broccoli, lemon wedges, sesame seeds, and scallions must return six or more items.

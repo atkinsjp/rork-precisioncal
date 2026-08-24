@@ -171,6 +171,8 @@ nonisolated enum UnitReference {
         (["toast", "bread slice", "slice of bread", "bread"], 30),
         (["burger patty", "patty", "hamburger", "cheeseburger", "burger"], 113),
         (["hash brown", "tater tot"], 70),
+        (["potato wedge", "wedge", "wedges"], 55),
+        (["fries", "fry", "french fry", "french fries"], 55),
         (["muffin"], 110),
         (["donut", "doughnut"], 60),
         (["cookie"], 30),
