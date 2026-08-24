@@ -164,7 +164,7 @@ nonisolated enum UnitReference {
         (["nugget", "tender"], 25),
         (["shrimp"], 12),
         (["bacon"], 12),
-        (["pancake", "crepe"], 60),
+        (["pancake", "crepe"], 65),
         (["waffle"], 75),
         (["french toast"], 65),
         (["egg"], 50),
@@ -189,6 +189,8 @@ nonisolated enum UnitReference {
         (["potato"], 173),
         (["scoop", "ice cream"], 66),
         (["lemon wedge", "lime wedge", "lemon", "lime"], 58),
+        (["strawberry"], 12),
+        (["blueberry", "raspberry", "blackberry"], 2),
     ]
 
     /// Grams per single unit for a discrete food, or nil when no reference exists.
