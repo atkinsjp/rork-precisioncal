@@ -594,6 +594,11 @@ nonisolated final class AIService: Sendable {
             hiddenFatMechanism: mechanism,
             micronutrients: (p4.micronutrients ?? []).filter { $0.amountMg >= 0 }
         )
+        let totalCal = mergedItems.reduce(0.0) { $0 + $1.calories }
+        print("[AIService] Final result: \(result.title) — \(mergedItems.count) item(s), \(Int(totalCal)) kcal: \(mergedItems.map { $0.name }.joined(separator: ", "))")
+        if mergedItems.count < 2, countFoodTerms(in: finalTitle) > 1 {
+            print("[AIService] WARNING: final result under-enumerated despite title implying multiple foods.")
+        }
         onProgress(.pass6Synthesized(result))
         return result
     }
@@ -1043,49 +1048,184 @@ nonisolated final class AIService: Sendable {
 
     // MARK: - Pass implementations
 
+    /// Two-tier Pass 1: first ask for a plain enumerated list (model is more reliable at listing
+    /// when not distracted by a complex JSON schema), then ask for the detailed JSON with that
+    /// exact list. If the detailed JSON still collapses items, retry once with a sterner prompt
+    /// that includes the previously enumerated names as a locked list.
     private func runPass1(base64: String) async throws -> Pass1Output {
+        let enumerated = try await enumerateFoods(base64: base64)
+        print("[AIService] Pre-enumeration found: \(enumerated.joined(separator: ", "))")
+        let firstTry = try await runPass1Detail(base64: base64, enumerated: enumerated, strict: false)
+        let mergedFirst = mergeEnumeration(enumerated: enumerated, into: firstTry)
+        print("[AIService] Pass1 detail returned \(firstTry.items.count) item(s): \(firstTry.items.map { $0.name }.joined(separator: ", ")); merged to \(mergedFirst.items.count)")
+        let detected = countFoodTerms(in: mergedFirst.title) + mergedFirst.items.count
+        if mergedFirst.items.count < 2 && detected > 1 {
+            print("[AIService] Pass1 under-enumerated (title implies \(detected) foods, got \(mergedFirst.items.count) items). Retrying with locked list.")
+            let retry = try await runPass1Detail(base64: base64, enumerated: enumerated, strict: true)
+            let mergedRetry = mergeEnumeration(enumerated: enumerated, into: retry)
+            print("[AIService] Pass1 retry returned \(retry.items.count) item(s); merged to \(mergedRetry.items.count)")
+            return mergedRetry.items.count >= mergedFirst.items.count ? mergedRetry : mergedFirst
+        }
+        return mergedFirst
+    }
+
+    /// Ensures the canonical Pass 1 item list contains every food from the pre-enumeration step.
+    /// Detail passes occasionally drop small sides even when told not to; this rebuilds the missing
+    /// entries with safe defaults so downstream passes and final reconciliation have a complete list.
+    private func mergeEnumeration(enumerated: [String], into output: Pass1Output) -> Pass1Output {
+        var existing = output.items
+        var known = Set(existing.map { $0.name.lowercased().trimmingCharacters(in: .whitespaces) })
+        for name in enumerated {
+            let key = name.lowercased().trimmingCharacters(in: .whitespaces)
+            if known.contains(key) { continue }
+            let inferredCategory = inferCategory(for: name)
+            existing.append(Pass1Item(
+                name: name,
+                preparation: inferPreparation(for: name),
+                visual: "",
+                category: inferredCategory,
+                isDiscrete: false,
+                discreteCount: 1,
+                estimatedSize: "",
+                state: ""
+            ))
+            known.insert(key)
+        }
+        return Pass1Output(items: existing, plateDetails: output.plateDetails, depthCues: output.depthCues, title: output.title)
+    }
+
+    private func inferCategory(for name: String) -> String {
+        let lower = name.lowercased()
+        if lower.contains("chicken") || lower.contains("beef") || lower.contains("pork") || lower.contains("fish") || lower.contains("salmon") || lower.contains("tuna") || lower.contains("shrimp") || lower.contains("tofu") || lower.contains("egg") { return "protein" }
+        if lower.contains("rice") || lower.contains("quinoa") || lower.contains("pasta") || lower.contains("noodle") || lower.contains("potato") || lower.contains("bread") || lower.contains("tortilla") || lower.contains("fries") || lower.contains("wedge") || lower.contains("oat") || lower.contains("bean") || lower.contains("lentil") || lower.contains("corn") { return "carb" }
+        if lower.contains("broccoli") || lower.contains("carrot") || lower.contains("pepper") || lower.contains("onion") || lower.contains("tomato") || lower.contains("spinach") || lower.contains("kale") || lower.contains("lettuce") || lower.contains("scallion") || lower.contains("mushroom") || lower.contains("zucchini") || lower.contains("squash") || lower.contains("pea") || lower.contains("green bean") || lower.contains("asparagus") || lower.contains("cauliflower") { return "veg" }
+        if lower.contains("lemon") || lower.contains("lime") || lower.contains("orange") || lower.contains("apple") || lower.contains("banana") || lower.contains("berry") || lower.contains("grape") || lower.contains("avocado") { return "fruit" }
+        if lower.contains("cheese") || lower.contains("yogurt") || lower.contains("milk") || lower.contains("sour cream") || lower.contains("butter") { return "dairy" }
+        if lower.contains("sauce") || lower.contains("glaze") || lower.contains("dressing") || lower.contains("gravy") || lower.contains("vinaigrette") || lower.contains("ketchup") || lower.contains("bbq") || lower.contains("teriyaki") { return "sauce" }
+        if lower.contains("oil") || lower.contains("sesame") || lower.contains("seed") || lower.contains("nut") || lower.contains("almond") || lower.contains("peanut") { return "fat" }
+        return "other"
+    }
+
+    private func inferPreparation(for name: String) -> String {
+        let lower = name.lowercased()
+        if lower.contains("glaze") || lower.contains("glazed") { return "glazed" }
+        if lower.contains("sauce") || lower.contains("dressed") { return "sauced" }
+        if lower.contains("roasted") || lower.contains("roast") { return "roasted" }
+        if lower.contains("grilled") || lower.contains("grill") { return "grilled" }
+        if lower.contains("fried") || lower.contains("crispy") { return "fried" }
+        if lower.contains("steamed") || lower.contains("steam") { return "steamed" }
+        if lower.contains("raw") || lower.contains("fresh") || lower.contains("wedge") { return "raw" }
+        if lower.contains("sauteed") || lower.contains("sauté") { return "sauteed" }
+        if lower.contains("baked") || lower.contains("bake") { return "baked" }
+        return "other"
+    }
+
+    /// Step 1: get a plain numbered list of every distinct food. This avoids the model shortcutting
+    /// by returning a single merged "bowl" item in JSON.
+    private func enumerateFoods(base64: String) async throws -> [String] {
         let system = """
-        You are PrecisionCalMacroAutopsy Pass 1 (Vision). EXHAUSTIVELY enumerate EVERY distinct edible component visible on or beside the plate. Do not summarize, do not group, and do not skip items because they look minor. Large visible components are NEVER optional.
+        You are a food-vision assistant. Look at the meal photo and list EVERY distinct edible component you can see.
 
-        MANDATORY COVERAGE — list each of the following as its OWN item whenever present, using the exact visible name:
-        - Every protein (chicken, beef, fish, tofu, egg, etc.) — separate cuts if visually distinct
-        - Every starch/carb (potato, rice, quinoa, pasta, bread, tortilla, fries, wedges, grains, beans, corn)
-        - Every vegetable (carrots, broccoli, greens, peppers, onions, tomatoes, scallions, etc.) — list each TYPE separately; a large broccoli cluster is a PRIMARY item, not garnish
-        - Every fruit, including garnishes (lemon wedge, lime, berries, apple slices, orange segments)
-        - Every sauce, dressing, dip, gravy, glaze, or condiment visible in a bowl or drizzled on food (estimate type: tomato-based, cream-based, vinaigrette, BBQ, teriyaki, orange glaze, etc.)
-        - Every dairy item (cheese, sour cream, yogurt, butter pat)
-        - Visible cooking fats (oil sheen, butter)
-        - Beverages if shown
-        Minimum expectation: typical restaurant plates have 3–6 distinct items. If you only see one, you are almost certainly missing sides — look again.
+        RULES:
+        - Do not group items. "Bowl" is not an item; list the ingredients inside it.
+        - Do not skip small items: seeds, scallions, lemon wedges, sauces, condiments, and garnishes all count.
+        - A large broccoli cluster or grain mound is a PRIMARY item, not garnish.
+        - Use the exact visible food name (e.g. "orange-glazed chicken", "quinoa", "roasted broccoli", "lemon wedges", "white sesame seeds", "black sesame seeds", "scallions").
 
-        **BOWL / COMPOSED PLATE EXAMPLES:**
-        - A grain bowl with orange-glazed chicken, quinoa, roasted broccoli, lemon wedges, sesame seeds, and scallions must produce at least SIX items: the chicken, the quinoa, the broccoli, the lemon wedges, the sesame seeds, and the scallions. The glaze may be merged with the chicken item only if it is visibly coating the chicken; otherwise list it separately.
-        - A plate with rice, stir-fried vegetables, and grilled salmon must produce THREE separate items, not one "rice bowl" entry.
+        Return ONLY a numbered list like:
+        1. orange-glazed chicken
+        2. quinoa
+        3. roasted broccoli
+        4. lemon wedges
+        5. sesame seeds
+        6. scallions
 
-        **EXAMPLE:** A photo of avocado toast with a fried egg and red pepper flakes must produce at least four separate items: the toast, the avocado spread, the fried egg, and the chili/pepper seasoning. Do not merge them into a single "toast" entry.
-
-        PREPARATION HINTS — do not default to "fried" just because the food is glossy or sauced. Use:
-        - "grilled" or "baked" for matte/charred protein with minimal oil
-        - "sauteed" or "roasted" for vegetables with slight oil sheen
-        - "fried" only when there is visibly battered/breaded, deep-fried texture
-        - "glazed" or "sauced" when the item is coated in a sticky sauce (orange glaze, teriyaki, BBQ) but not battered
-        - "raw" for untouched fruit/vegetable garnishes
-
-        DISCRETE UNIT COUNTING — MANDATORY for countable foods:
-        - For any food that comes in distinct units (pancakes, waffles, crepes, eggs, slices of bread/toast, burger/sandwich patties, sausages, meatballs, nuggets, wings, drumsticks, cookies, muffins, donuts, whole fruit, lemon wedges, scoops), set "isDiscrete": true and count the units EXACTLY in "discreteCount". COUNT every unit: a stack of pancakes is 4 pancakes, not one mass. If units are cut or partially hidden, estimate the nearest whole-unit equivalent.
-        - Give "estimatedSize" as a size class with a physical anchor for ONE unit (e.g. "medium (approx 5-6 inch diameter)", "large (approx 30g slice)", "small (approx 2-inch)").
-        - Give "state" describing the arrangement ("stacked", "spread", "fanned", "cut in half").
-        - Amorphous foods (rice, pasta, salad, stew, sauces, casseroles, mashed items, loose seeds, chopped scallions) set "isDiscrete": false and "discreteCount": 1.
-
-        Return STRICT JSON only:
-        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|roasted|sauteed|glazed|sauced|other","visual":"color/texture","category":"protein|carb|veg|fat|fruit|dairy|sauce|other","isDiscrete":true|false,"discreteCount":number,"estimatedSize":"size class for ONE unit or empty","state":"stacked|spread|fanned|cut|other"}],"plateDetails":"diameter cm + shape","depthCues":"shadow/portion notes"}
+        No JSON, no prose, just the numbered list.
         """
         let body: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": system],
                 ["role": "user", "content": [
-                    ["type": "text", "text": "Enumerate EVERY distinct food, side, sauce, garnish, and condiment on the plate. Do not skip carbs, vegetables, or sauces. Then report prep, plate size, and depth cues."],
+                    ["type": "text", "text": "List every distinct food item visible in this photo as a numbered list."],
+                    ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
+                ]],
+            ],
+            "temperature": 0.0,
+            "seed": Self.deterministicSeed,
+            "max_tokens": 1024,
+        ]
+        let raw = try await postChat(body: body)
+        return parseNumberedList(raw)
+    }
+
+    private func parseNumberedList(_ text: String) -> [String] {
+        var items: [String] = []
+        let pattern = "^\\s*\\d+\\.?\\s*"
+        for line in text.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty, trimmed.range(of: "^\\s*\\d+\\.?\\s*", options: .regularExpression) != nil else { continue }
+            let cleaned = trimmed.replacingOccurrences(of: "^\\s*\\d+\\.?\\s*[-\\-]?\\s*", with: "", options: .regularExpression, range: nil)
+            let final = cleaned.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "\\.$", with: "", options: .regularExpression, range: nil)
+            if !final.isEmpty, !final.lowercased().contains("item"), final.count > 2 {
+                items.append(final)
+            }
+        }
+        return items
+    }
+
+    /// Step 2: ask for detailed JSON given the pre-enumerated list. `strict` adds a locked-list
+    /// reminder and a harsh penalty if the JSON deviates from the enumeration.
+    private func runPass1Detail(base64: String, enumerated: [String], strict: Bool) async throws -> Pass1Output {
+        let lockedList = enumerated.map { "- \($0)" }.joined(separator: "\n")
+        let strictPrefix = strict
+            ? "!!! STRICT ENFORCEMENT — DO NOT MERGE OR DROP ITEMS !!!\nThe items below are LOCKED. The JSON \"items\" array MUST contain a separate entry for EACH listed food. If you return fewer items than listed, you are wrong.\n\n"
+            : ""
+        let system = """
+        You are PrecisionCalMacroAutopsy Pass 1 (Vision). You have already enumerated the items in the meal photo. Your job now is to produce the detailed JSON report.
+
+        \(strictPrefix)PRE-ENUMERATED ITEMS (each must appear in the JSON items array):
+        \(lockedList)
+
+        MANDATORY COVERAGE — list each of the following as its OWN item whenever present:
+        - Every protein (chicken, beef, fish, tofu, egg, etc.) — separate cuts if visually distinct
+        - Every starch/carb (potato, rice, quinoa, pasta, bread, tortilla, fries, wedges, grains, beans, corn)
+        - Every vegetable (carrots, broccoli, greens, peppers, onions, tomatoes, scallions, etc.) — a large broccoli cluster is a PRIMARY item
+        - Every fruit, including garnishes (lemon wedge, lime, berries, apple slices, orange segments)
+        - Every sauce, dressing, dip, gravy, glaze, or condiment visible
+        - Every dairy item (cheese, sour cream, yogurt, butter pat)
+        - Visible cooking fats (oil sheen, butter)
+        - Beverages if shown
+
+        **BOWL / COMPOSED PLATE EXAMPLES:**
+        - A grain bowl with orange-glazed chicken, quinoa, roasted broccoli, lemon wedges, sesame seeds, and scallions must produce at least SIX items: the chicken, the quinoa, the broccoli, the lemon wedges, the sesame seeds, and the scallions.
+        - A plate with rice, stir-fried vegetables, and grilled salmon must produce THREE separate items, not one "rice bowl" entry.
+
+        PREPARATION HINTS:
+        - "grilled" or "baked" for matte/charred protein with minimal oil
+        - "sauteed" or "roasted" for vegetables with slight oil sheen
+        - "fried" only when visibly battered/breaded, deep-fried
+        - "glazed" or "sauced" when coated in a sticky sauce (orange glaze, teriyaki, BBQ) but not battered
+        - "raw" for untouched fruit/vegetable garnishes
+
+        DISCRETE UNIT COUNTING — MANDATORY for countable foods:
+        - For any food in distinct units (pancakes, eggs, bread slices, burger patties, sausages, meatballs, nuggets, wings, drumsticks, lemon wedges, scoops), set "isDiscrete": true and count units in "discreteCount".
+        - Give "estimatedSize" as a size class for ONE unit (e.g. "medium (approx 5-6 inch diameter)", "large (approx 30g slice)").
+        - Give "state" describing the arrangement ("stacked", "spread", "fanned", "cut in half").
+        - Amorphous foods (rice, pasta, quinoa, salad, stew, sauces, casseroles, mashed items, loose seeds, chopped scallions) set "isDiscrete": false and "discreteCount": 1.
+
+        Return STRICT JSON only:
+        {"title":"short meal name","items":[{"name":"...","preparation":"grilled|fried|baked|raw|steamed|boiled|roasted|sauteed|glazed|sauced|other","visual":"color/texture","category":"protein|carb|veg|fat|fruit|dairy|sauce|other","isDiscrete":true|false,"discreteCount":number,"estimatedSize":"size class for ONE unit or empty","state":"stacked|spread|fanned|cut|other"}],"plateDetails":"diameter cm + shape","depthCues":"shadow/portion notes"}
+        """
+        let userText = strict
+            ? "The enumerated items are locked. Return the JSON with ALL of them as separate entries. Do not merge sides into the main dish."
+            : "Produce the detailed JSON report for every distinct food item visible on the plate."
+        let body: [String: Any] = [
+            "model": model,
+            "messages": [
+                ["role": "system", "content": system],
+                ["role": "user", "content": [
+                    ["type": "text", "text": userText],
                     ["type": "image_url", "image_url": ["url": "data:image/jpeg;base64,\(base64)"]],
                 ]],
             ],
@@ -1095,6 +1235,18 @@ nonisolated final class AIService: Sendable {
         ]
         let raw = try await postChat(body: body)
         return try decode(Pass1Output.self, from: raw)
+    }
+
+    /// Counts how many known food words appear in the given title, to detect when a title
+    /// implies multiple items but the JSON item list is collapsed.
+    private func countFoodTerms(in title: String?) -> Int {
+        guard let title = title?.lowercased() else { return 0 }
+        let foods = ["chicken", "beef", "pork", "fish", "salmon", "tuna", "shrimp", "tofu", "egg",
+                     "rice", "quinoa", "pasta", "noodle", "potato", "bread", "toast", "tortilla",
+                     "broccoli", "carrot", "pepper", "onion", "tomato", "spinach", "kale", "lettuce",
+                     "scallion", "lemon", "lime", "avocado", "mushroom", "corn", "bean", "pea",
+                     "sesame", "seed", "cheese", "yogurt", "sauce", "glaze", "dressing"]
+        return foods.reduce(0) { title.contains($1) ? $0 + 1 : $0 }
     }
 
     private func runPass2(base64: String, p1: Pass1Output) async throws -> Pass2Output {
