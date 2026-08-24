@@ -15,6 +15,7 @@ struct MealAnalysisSheet: View {
     @State private var showAddMissing: Bool = false
     @State private var captureCheckDismissed: Bool = false
     @Environment(\.modelContext) private var modelContext
+    @Query(sort: \FavoriteMeal.createdAt, order: .reverse) private var favorites: [FavoriteMeal]
 
     var body: some View {
         ZStack {
@@ -86,6 +87,17 @@ struct MealAnalysisSheet: View {
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 10) {
                 if meal.status == "complete" {
+                    Button {
+                        toggleFavorite()
+                    } label: {
+                        Image(systemName: isFavorite ? "star.fill" : "star")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(isFavorite ? PrecisionCalMacroAutopsyTheme.amber : PrecisionCalMacroAutopsyTheme.textPrimary)
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay(Circle().stroke(PrecisionCalMacroAutopsyTheme.glassStroke, lineWidth: 1))
+                            .symbolEffect(.bounce, value: isFavorite)
+                    }
                     Button {
                         showEdit = true
                     } label: {
@@ -526,6 +538,27 @@ struct MealAnalysisSheet: View {
         .popover(item: $sourceItem) { item in
             WeightSourcePopover(item: item)
                 .presentationDetents([.height(160)])
+        }
+    }
+
+    // MARK: - Favorites
+
+    private var isFavorite: Bool {
+        favorites.contains { $0.sourceCreatedAt == meal.createdAt }
+    }
+
+    /// Saves the current meal composition as a one-tap favorite, or removes it if already saved.
+    private func toggleFavorite() {
+        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        if let existing = favorites.first(where: { $0.sourceCreatedAt == meal.createdAt }) {
+            modelContext.delete(existing)
+            try? modelContext.save()
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        } else {
+            let favorite = FavoriteMeal(meal: meal)
+            modelContext.insert(favorite)
+            try? modelContext.save()
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
     }
 

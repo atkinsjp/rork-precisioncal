@@ -33,6 +33,7 @@ struct PrecisionCalMacroAutopsyApp: App {
             RoadmapInsight.self,
             BodyWeightEntry.self,
             ShoppingItem.self,
+            FavoriteMeal.self,
         ])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {

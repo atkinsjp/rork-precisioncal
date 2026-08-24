@@ -8,6 +8,7 @@ struct MealLogView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(StoreViewModel.self) private var store
     @Query(sort: \Meal.createdAt, order: .reverse) private var meals: [Meal]
+    @Query(sort: \FavoriteMeal.createdAt, order: .reverse) private var favorites: [FavoriteMeal]
 
     @State private var showCapture = false
     @State private var showSourceDialog = false
@@ -42,6 +43,10 @@ struct MealLogView: View {
                     header
 
                     captureCard
+
+                    if !favorites.isEmpty {
+                        favoritesSection
+                    }
 
                     if !meals.isEmpty {
                         Text("History")
@@ -211,6 +216,93 @@ struct MealLogView: View {
             .padding(.vertical, 24)
             .padding(.horizontal, 20)
         }
+    }
+
+    private var favoritesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Favorites")
+                .font(.system(size: 13, weight: .semibold))
+                .tracking(2)
+                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                .padding(.horizontal, 4)
+                .padding(.top, 8)
+
+            ForEach(favorites) { favorite in
+                GlassCard(cornerRadius: 16) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(PrecisionCalMacroAutopsyTheme.amber)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(PrecisionCalMacroAutopsyTheme.amber.opacity(0.15)))
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(favorite.name)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textPrimary)
+                                .lineLimit(1)
+                            Text("\(Int(favorite.totalCalories)) cal • \(favorite.items.count) item\(favorite.items.count == 1 ? "" : "s")")
+                                .font(.system(size: 12))
+                                .foregroundStyle(PrecisionCalMacroAutopsyTheme.textTertiary)
+                        }
+                        Spacer()
+                        Button {
+                            logFavorite(favorite)
+                        } label: {
+                            Image(systemName: "plus")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 32, height: 32)
+                                .background(PrecisionCalMacroAutopsyTheme.terracotta, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(14)
+                }
+                .contextMenu {
+                    Button(role: .destructive) {
+                        modelContext.delete(favorite)
+                        try? modelContext.save()
+                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                    } label: { Label("Remove favorite", systemImage: "star.slash") }
+                }
+            }
+        }
+    }
+
+    /// One-tap logging: clones the saved composition into a new completed meal for right now.
+    private func logFavorite(_ favorite: FavoriteMeal) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        let meal = Meal(
+            createdAt: Date(),
+            title: favorite.name,
+            status: "complete",
+            totalCalories: favorite.totalCalories,
+            totalProtein: favorite.totalProtein,
+            totalCarbs: favorite.totalCarbs,
+            totalFat: favorite.totalFat,
+            totalFiber: favorite.totalFiber,
+            totalSugar: favorite.totalSugar,
+            waterContentMl: favorite.waterContentMl
+        )
+        modelContext.insert(meal)
+        for snapshot in favorite.items {
+            let item = MealItem(
+                name: snapshot.name,
+                preparation: snapshot.preparation,
+                grams: snapshot.grams,
+                calories: snapshot.calories,
+                protein: snapshot.protein,
+                carbs: snapshot.carbs,
+                fat: snapshot.fat,
+                fiber: snapshot.fiber,
+                sugar: snapshot.sugar,
+                waterMl: snapshot.waterMl
+            )
+            item.meal = meal
+            meal.items.append(item)
+        }
+        try? modelContext.save()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     @MainActor
