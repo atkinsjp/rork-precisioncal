@@ -177,7 +177,8 @@ final class MealItem {
     var sugar: Double
     var waterMl: Double
     /// How the gram weight was derived: visual estimation from the photo, or a default reference weight.
-    var weightSource: String
+    /// Inline default is required so SwiftData lightweight migration can backfill existing rows.
+    var weightSource: String = "visual"
     var meal: Meal?
 
     init(
