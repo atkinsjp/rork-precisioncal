@@ -717,6 +717,15 @@ nonisolated final class AIService: Sendable {
                 }
             }
 
+            // Sliced foods: a slice is a fraction of a whole unit. Slices of any food
+            // rarely total more than 300g on a single plate.
+            if name.contains("slice") {
+                clamped = min(clamped, 300)
+                if clamped != estimate {
+                    print("[AIService] Slice clamp: '\(items[idx].name)' \(Int(estimate))g → \(Int(clamped))g.")
+                }
+            }
+
             // Sauce / glaze / dressing: usually a coating, not a soup.
             let sauce = ["glaze", "sauce", "dressing", "vinaigrette", "gravy", "ketchup",
                          "mustard", "mayo", "mayonnaise", "dip", "salsa", "marinara"]
@@ -764,7 +773,9 @@ nonisolated final class AIService: Sendable {
             var fiber = item.fiber
             var sugar = item.sugar
 
-            if ["sesame", "seed", "seeds", "scallion", "green onion", "spring onion",
+            if name.contains("slice") {
+                grams = min(grams, 300)
+            } else if ["sesame", "seed", "seeds", "scallion", "green onion", "spring onion",
                 "chili flake", "pepper flake", "herb", "cilantro", "parsley", "basil",
                 "dill", "chive", "spice"].contains(where: { name.contains($0) }) {
                 grams = min(grams, 15)
@@ -1270,6 +1281,7 @@ nonisolated final class AIService: Sendable {
 
         DISCRETE UNIT COUNTING — MANDATORY for countable foods:
         - For any food in distinct units (pancakes, eggs, bread slices, burger patties, sausages, meatballs, nuggets, wings, drumsticks, lemon wedges, scoops), set "isDiscrete": true and count units in "discreteCount".
+        - SLICES ARE COUNTABLE UNITS. Sliced fruit or vegetables ("banana slices", "apple slices", "strawberry slices") must be named "<food> slices", set "isDiscrete": true, and "discreteCount" must be the ACTUAL number of slices visible.
         - Count carefully: a stack of 9 pancakes is 9 units, not 1 mass. Count layers you can see and infer hidden layers from the stack height.
         - Give "estimatedSize" as a size class for ONE unit (e.g. "medium (approx 5-6 inch diameter)", "large (approx 30g slice)").
         - Give "state" describing the arrangement ("stacked", "spread", "fanned", "cut in half").
@@ -1322,6 +1334,7 @@ nonisolated final class AIService: Sendable {
         DISCRETE UNIT WEIGHTING — AUTHORITATIVE:
         For every item with "isDiscrete": true, the count is ground truth. Compute weight as unit weight × discreteCount and report the TOTAL as estimatedWeightG. The count × reference unit weight is the PRIMARY estimate; use visual size only to adjust the unit weight within a narrow range (e.g. small vs large pancake). Do NOT override the count with a volumetric estimate of the whole stack.
         Reference unit weights: pancake ~65g, waffle ~75g, egg ~50g, bread slice ~30g, burger patty ~113g, sausage ~68g, meatball ~30g, nugget/tender ~25g, muffin ~110g, donut ~60g, cookie ~30g, banana ~118g, apple ~182g, baked potato ~173g, chicken breast ~174g, wing ~40g, drumstick ~62g, lemon/lime wedge ~58g, strawberry ~12g, blueberry ~2g.
+        SLICE RULE — the unit weight must match the UNIT SHAPE, not the food: a banana SLICE is ~15g (a whole banana is 118g), an apple slice ~25g, an avocado slice ~30g. NEVER multiply a whole-fruit weight by a slice count. 8 banana slices = 8 × 15g = 120g TOTAL — never 944g.
         Example: 4 medium pancakes = 4 × 65g = 260g TOTAL. 9 stacked pancakes = 9 × 65g = 585g TOTAL — not 225g.
         Amorphous items ("isDiscrete": false) are estimated from volume × density as usual.
 
@@ -1330,6 +1343,7 @@ nonisolated final class AIService: Sendable {
         - A single serving of chicken/pork/beef/fish in a bowl is typically 120–250g cooked. Only large platters or multiple pieces should exceed 300g.
         - A sprinkle of seeds, chopped herbs, scallions, or chili flakes is a GARNISH, not a side dish: 2–10g total. Never return 100g of sesame seeds.
         - A lemon/lime wedge is 50–60g each; count the wedges and multiply.
+        - Sliced fruit/vegetable garnish (banana slices, berry halves) is 60–150g total for a typical topping. 5 banana slices is ~75g, not 900g.
         - A sauce or glaze coating is usually 15–60g total, not 100g+ unless the food is swimming in it.
         - Grains (rice, quinoa) in a bowl are typically 120–250g cooked.
         - Vegetables such as broccoli, carrots, or peppers should reflect their actual visual coverage: a large portion is 150–250g, not 50g.

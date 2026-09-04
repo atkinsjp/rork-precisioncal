@@ -182,6 +182,10 @@ nonisolated enum UnitReference {
         (["bun", "roll", "biscuit"], 55),
         (["taco"], 78),
         (["tortilla"], 45),
+        // SLICES must be matched BEFORE the whole fruit — a slice is a fraction of the whole unit.
+        (["banana slice"], 15),
+        (["apple slice", "apple wedge"], 24),
+        (["avocado slice"], 30),
         (["banana"], 118),
         (["apple"], 182),
         (["orange", "mandarin"], 130),
@@ -197,7 +201,14 @@ nonisolated enum UnitReference {
     static func gramsPerUnit(forName name: String) -> Double? {
         let lowered = name.lowercased()
         for entry in table where entry.keywords.contains(where: { lowered.contains($0) }) {
-            return entry.gramsPerUnit
+            let grams = entry.gramsPerUnit
+            // Defense: if a SLICE/WEDGE name only matched a WHOLE-food reference (e.g.
+            // "mango slices" → mango), scale the whole-unit weight down to a plausible
+            // slice fraction (~1/8 of the fruit) so count × unit never explodes.
+            if (lowered.contains("slice") || lowered.contains("wedge")) && grams > 60 {
+                return (grams * 0.15).rounded()
+            }
+            return grams
         }
         return nil
     }
