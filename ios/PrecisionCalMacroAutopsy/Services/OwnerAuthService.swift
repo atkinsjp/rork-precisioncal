@@ -1,7 +1,7 @@
 import AuthenticationServices
 import Foundation
 import Observation
-import UIKit
+import RevenueCat
 
 /// Verifies the device is signed in with the app owner's Apple ID via
 /// Sign in with Apple. On first verification we capture the email from the
@@ -9,6 +9,10 @@ import UIKit
 /// stable Apple user identifier. On every launch we silently call
 /// `getCredentialState` against that identifier — if Apple still reports it
 /// as `.authorized`, we keep owner mode unlocked automatically.
+///
+/// Sign-in is driven by SwiftUI's `SignInWithAppleButton` (same as the
+/// onboarding funnel) — a manual `ASAuthorizationController` presentation
+/// proved unreliable on TestFlight builds (AuthorizationError 1000).
 @MainActor
 @Observable
 final class OwnerAuthService: NSObject {
@@ -18,14 +22,15 @@ final class OwnerAuthService: NSObject {
         "atkinsdigitalbiz@gmail.com"
     ]
 
-    private static let appleUserIDKey = "ownerAppleUserID"
-    private static let appleUserEmailKey = "ownerAppleUserEmail"
+    /// Shared keys — the onboarding funnel (FirstScanFunnelView) writes the
+    /// same keys, so both sign-in paths produce one session that sign-out
+    /// fully clears.
+    private static let appleUserIDKey = "appleUserID"
+    private static let appleUserEmailKey = "appleUserEmail"
 
-    var isVerifying: Bool = false
     var lastError: String?
 
     private let store: StoreViewModel
-    private var continuation: CheckedContinuation<Void, Error>?
 
     init(store: StoreViewModel) {
         self.store = store
@@ -38,6 +43,9 @@ final class OwnerAuthService: NSObject {
         UserDefaults.standard.removeObject(forKey: Self.appleUserEmailKey)
         store.setOwnerOverride(false)
         lastError = nil
+        // Detach the RevenueCat identity that was linked at sign-in so the
+        // session truly ends on this device.
+        Task { _ = try? await Purchases.shared.logOut() }
     }
 
     var savedAppleUserID: String? {
@@ -74,53 +82,21 @@ final class OwnerAuthService: NSObject {
         }
     }
 
-    /// Begin the Sign in with Apple flow. On success, if the email matches the
-    /// owner allow-list, owner override is enabled automatically.
-    func verifyOwner() async {
-        guard !isVerifying else { return }
-        isVerifying = true
-        lastError = nil
-        defer { isVerifying = false }
-
-        let request = ASAuthorizationAppleIDProvider().createRequest()
-        request.requestedScopes = [.email, .fullName]
-
-        let controller = ASAuthorizationController(authorizationRequests: [request])
-        controller.delegate = self
-        controller.presentationContextProvider = self
-
-        do {
-            try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-                self.continuation = cont
-                controller.performRequests()
+    /// Shared completion handler for `SignInWithAppleButton`. On success, if
+    /// the email matches the owner allow-list, owner override is enabled.
+    func handleAuthorization(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let auth):
+            guard let credential = auth.credential as? ASAuthorizationAppleIDCredential else {
+                lastError = "Unexpected credential type."
+                return
             }
-        } catch {
-            if (error as NSError).code != ASAuthorizationError.canceled.rawValue {
-                lastError = error.localizedDescription
-            }
-        }
-    }
-}
-
-extension OwnerAuthService: ASAuthorizationControllerDelegate {
-    nonisolated func authorizationController(controller: ASAuthorizationController,
-                                             didCompleteWithAuthorization authorization: ASAuthorization) {
-        guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential else {
-            Task { @MainActor in
-                self.lastError = "Unexpected credential type."
-                self.continuation?.resume()
-                self.continuation = nil
-            }
-            return
-        }
-        let userID = credential.user
-        // Apple returns email only on the very first sign-in. After that we
-        // rely on the email saved in UserDefaults from the first auth.
-        let returnedEmail = credential.email?.lowercased()
-
-        Task { @MainActor in
-            let stored = self.savedAppleUserEmail?.lowercased()
-            let effectiveEmail = returnedEmail ?? (self.savedAppleUserID == userID ? stored : nil)
+            let userID = credential.user
+            // Apple returns email only on the very first sign-in. After that we
+            // rely on the email saved in UserDefaults from the first auth.
+            let returnedEmail = credential.email?.lowercased()
+            let stored = savedAppleUserEmail?.lowercased()
+            let effectiveEmail = returnedEmail ?? (savedAppleUserID == userID ? stored : nil)
 
             UserDefaults.standard.set(userID, forKey: Self.appleUserIDKey)
             if let returnedEmail {
@@ -128,35 +104,22 @@ extension OwnerAuthService: ASAuthorizationControllerDelegate {
             }
 
             if let email = effectiveEmail, Self.ownerEmails.contains(email) {
-                self.store.setOwnerOverride(true)
-                self.lastError = nil
+                store.setOwnerOverride(true)
+                lastError = nil
             } else if returnedEmail == nil && stored == nil {
-                self.lastError = "Apple didn't return an email this time. Please remove this app from your Apple ID's signed-in apps (Settings > Apple ID > Sign in with Apple) and try again."
+                lastError = "Apple didn't return an email this time. Please remove this app from your Apple ID's signed-in apps (Settings > Apple ID > Sign in with Apple) and try again."
             } else {
-                self.lastError = "This Apple ID isn't on the owner list."
+                lastError = "This Apple ID isn't on the owner list."
             }
 
-            self.continuation?.resume()
-            self.continuation = nil
-        }
-    }
-
-    nonisolated func authorizationController(controller: ASAuthorizationController,
-                                             didCompleteWithError error: Error) {
-        Task { @MainActor in
-            self.continuation?.resume(throwing: error)
-            self.continuation = nil
-        }
-    }
-}
-
-extension OwnerAuthService: ASAuthorizationControllerPresentationContextProviding {
-    nonisolated func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
-        MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap { $0.windows }
-                .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+        case .failure(let error):
+            let nsError = error as NSError
+            guard nsError.code != ASAuthorizationError.canceled.rawValue else { return }
+            if nsError.code == ASAuthorizationError.unknown.rawValue {
+                lastError = "Apple sign-in couldn't start. Make sure you're signed in to iCloud (Settings > your name > iCloud) and try again."
+            } else {
+                lastError = error.localizedDescription
+            }
         }
     }
 }

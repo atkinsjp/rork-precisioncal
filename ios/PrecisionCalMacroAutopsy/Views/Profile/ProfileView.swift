@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 import SwiftData
 import StoreKit
@@ -87,18 +88,6 @@ struct ProfileView: View {
             .sheet(item: $legalSheet) { kind in
                 LegalDocumentView(kind: kind)
             }
-            .alert("Sign out?", isPresented: $showSignOutConfirm) {
-                Button("Cancel", role: .cancel) { }
-                Button("Sign Out", role: .destructive) { signOut() }
-            } message: {
-                Text("You'll be signed out of Apple ID on this device. Your local data stays until you delete your account.")
-            }
-            .alert("Delete account?", isPresented: $showDeleteConfirm) {
-                Button("Cancel", role: .cancel) { }
-                Button("Delete Everything", role: .destructive) { deleteAccount() }
-            } message: {
-                Text("This permanently erases your profile, meals, scans, calibrations, sanctuary posts, and all local data on this device. This cannot be undone. Active subscriptions are managed by Apple and must be cancelled separately.")
-            }
             .alert("Couldn't open Subscriptions", isPresented: Binding(get: { manageSubError != nil }, set: { if !$0 { manageSubError = nil } })) {
                 Button("OK", role: .cancel) { manageSubError = nil }
             } message: {
@@ -139,6 +128,12 @@ struct ProfileView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .confirmationDialog("Sign out?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
+                    Button("Sign Out", role: .destructive) { signOut() }
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("You'll be signed out of Apple ID on this device. Your local data stays until you delete your account.")
+                }
 
                 Divider().padding(.leading, 56).opacity(0.5)
 
@@ -156,6 +151,12 @@ struct ProfileView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isDeletingAccount)
+                .alert("Delete account?", isPresented: $showDeleteConfirm) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Delete Everything", role: .destructive) { deleteAccount() }
+                } message: {
+                    Text("This permanently erases your profile, meals, scans, calibrations, sanctuary posts, and all local data on this device. This cannot be undone. Active subscriptions are managed by Apple and must be cancelled separately.")
+                }
             }
             .padding(.vertical, 4)
         }
@@ -212,6 +213,15 @@ struct ProfileView: View {
     private func signOut() {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         ownerAuth.signOut()
+        withAnimation(.easeInOut(duration: 0.4)) {
+            calibrationToast = "Signed out on this device."
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(2.4))
+            withAnimation(.easeInOut(duration: 0.4)) {
+                calibrationToast = nil
+            }
+        }
     }
 
     private func deleteAccount() {
@@ -605,30 +615,15 @@ struct ProfileView: View {
                         .tint(PrecisionCalMacroAutopsyTheme.terracotta)
                 }
 
-                Button {
+                SignInWithAppleButton(store.ownerOverride && ownerAuth.savedAppleUserID != nil ? .continue : .signIn) { request in
+                    request.requestedScopes = [.fullName, .email]
+                } onCompletion: { result in
                     UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                    Task { await ownerAuth.verifyOwner() }
-                } label: {
-                    HStack(spacing: 8) {
-                        if ownerAuth.isVerifying {
-                            ProgressView().tint(.white).scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "applelogo")
-                                .font(.system(size: 13, weight: .bold))
-                        }
-                        Text(ownerAuth.isVerifying ? "Verifying…" : (store.ownerOverride && ownerAuth.savedAppleUserID != nil ? "Apple ID verified" : "Auto-unlock with Apple ID"))
-                            .font(.system(size: 13, weight: .bold))
-                            .tracking(0.6)
-                    }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background {
-                        Capsule().fill(Color.black.opacity(0.88))
-                    }
+                    ownerAuth.handleAuthorization(result)
                 }
-                .buttonStyle(.plain)
-                .disabled(ownerAuth.isVerifying)
+                .signInWithAppleButtonStyle(.black)
+                .frame(height: 40)
+                .clipShape(Capsule())
 
                 if let err = ownerAuth.lastError {
                     Text(err)
