@@ -92,9 +92,9 @@ nonisolated enum FoodBaseline {
         case "dairy": return .init(kcalPer100: 120, proteinPer100: 6.0, carbPer100: 5.0, fatPer100: 8.0, fiberPer100: 0.0, sugarPer100: 4.5)
         case "fat": return .init(kcalPer100: 884, proteinPer100: 0.0, carbPer100: 0.0, fatPer100: 100.0, fiberPer100: 0.0, sugarPer100: 0.0)
         case "protein": return .init(kcalPer100: 200, proteinPer100: 27.0, carbPer100: 0.0, fatPer100: 10.0, fiberPer100: 0.0, sugarPer100: 0.0)
-        // Unknown / fallback categories must not invent calories. Water/ice and other no-calorie
-        // items should land here rather than getting an arbitrary 120 kcal/100g.
-        default: return .init(kcalPer100: 0, proteinPer100: 0.0, carbPer100: 0.0, fatPer100: 0.0, fiberPer100: 0.0, sugarPer100: 0.0)
+        // Generic fallback for unknown foods. Water/ice are handled explicitly in the table
+        // above (0 kcal), so unknown-but-edible items still get a sane estimate here.
+        default: return .init(kcalPer100: 120, proteinPer100: 5.0, carbPer100: 15.0, fatPer100: 4.0, fiberPer100: 1.5, sugarPer100: 3.0)
         }
     }
 

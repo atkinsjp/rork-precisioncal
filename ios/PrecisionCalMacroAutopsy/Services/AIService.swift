@@ -538,7 +538,9 @@ nonisolated final class AIService: Sendable {
         // (never trusting the model's kcal) so totals stay perfectly synchronized.
         let mergedItems: [MealAnalysisResult.Item] = reconciledItems.map { item in
             let adj = p5.adjustments.first { matchName($0.name, item.name) && $0.lipidSheenDetected }
-            let addedFat = max(0, adj?.addedFatG ?? 0)
+            // Lipid safety cap: the prompt asks for ~3–15g of added fat per serving, but a
+            // hallucinated 40g+ adjustment would silently add 360+ kcal. 15g is the ceiling.
+            let addedFat = min(max(0, adj?.addedFatG ?? 0), 15)
             let addedKcal = (addedFat * 9).rounded()
             return MealAnalysisResult.Item(
                 name: item.name,
@@ -722,6 +724,9 @@ nonisolated final class AIService: Sendable {
                 }
             }
 
+            // Catch-all: no single item on a scanned plate plausibly exceeds 800g.
+            clamped = min(clamped, 800)
+
             // Sliced foods: a slice is a fraction of a whole unit. Slices of any food
             // rarely total more than 300g on a single plate.
             if name.contains("slice") {
@@ -790,6 +795,11 @@ nonisolated final class AIService: Sendable {
             } else if ["chicken", "beef", "steak", "pork", "lamb", "fish", "salmon",
                        "tuna", "cod", "shrimp", "tofu", "tempeh"].contains(where: { name.contains($0) }) {
                 grams = min(grams, 350)
+            }
+
+            // Catch-all: no single item on a scanned plate plausibly exceeds 800g.
+            if grams > 800 {
+                grams = 800
             } else if ["wedge", "fries", "fry", "roasted potato"].contains(where: { name.contains($0) }) {
                 grams = min(grams, 350)
             }
@@ -862,6 +872,24 @@ nonisolated final class AIService: Sendable {
     /// Round to one decimal place.
     private func round1(_ v: Double) -> Double { (v * 10).rounded() / 10 }
 
+    /// Rescale an item's macros proportionally to a new gram weight so kcal/g stays consistent.
+    private static func rescaled(_ item: MealAnalysisResult.Item, to grams: Double) -> MealAnalysisResult.Item {
+        let ratio = grams / max(item.grams, 1)
+        return MealAnalysisResult.Item(
+            name: item.name,
+            preparation: item.preparation,
+            grams: grams,
+            calories: (item.calories * ratio).rounded(),
+            protein: (item.protein * ratio).rounded(),
+            carbs: (item.carbs * ratio).rounded(),
+            fat: (item.fat * ratio).rounded(),
+            fiber: (item.fiber * ratio).rounded(),
+            sugar: (item.sugar * ratio).rounded(),
+            waterMl: item.waterMl,
+            weightSource: item.weightSource
+        )
+    }
+
     /// Reconcile the synthesized nutrition items against the canonical Pass 1 enumeration so
     /// that no identified item is silently dropped and no plant/starch item renders 0 carbs.
     private func reconcileItems(
@@ -894,7 +922,19 @@ nonisolated final class AIService: Sendable {
             }
             if let i = matchIdx {
                 consumed[i] = true
-                output.append(modelItems[i])
+                var item = modelItems[i]
+                // GRAM-LOCK GUARDRAIL: downstream passes sometimes re-estimate grams despite
+                // the prompt anchoring. If the model's weight grossly deviates (0.5×–2×) from
+                // the clamped Pass 2 weight, snap back and rescale macros proportionally.
+                if let weight = weights.first(where: { matchName($0.name, p1.name) }),
+                   weight.estimatedWeightG > 0, item.grams > 0 {
+                    let anchor = weight.estimatedWeightG
+                    if item.grams > anchor * 2 || item.grams < anchor * 0.5 {
+                        print("[AIService] Gram-lock: '\(item.name)' \(Int(item.grams))g → \(Int(anchor))g (Pass 2 anchor).")
+                        item = Self.rescaled(item, to: anchor)
+                    }
+                }
+                output.append(item)
             } else {
                 // Item enumerated in Pass 1 but dropped by the nutrition passes — rebuild it.
                 let source: String
