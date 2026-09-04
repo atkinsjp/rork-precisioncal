@@ -527,7 +527,12 @@ nonisolated final class AIService: Sendable {
         // zero-out carbohydrate macros on identified starches/vegetables. Reconcile the
         // synthesized items back against the canonical Pass 1 enumeration: re-attach any
         // dropped item from baseline values, and backfill 0-carb/0-fiber/0-sugar plant foods.
-        let reconciledItems = reconcileItems(p1Items: p1.items, weights: p2.items, mapped: p4.items)
+        // Final portion-reality clamp: Pass 3/4 can re-introduce absurd gram estimates
+        // (e.g. 100g of sprinkled sesame seeds) even after Pass 2 was clamped, so the
+        // final merged items MUST pass through the same caps as the single-shot path.
+        let reconciledItems = clampResultItems(
+            reconcileItems(p1Items: p1.items, weights: p2.items, mapped: p4.items)
+        )
 
         // Integrity: 1g of detected hidden fat == 9 kcal. We derive calories from grams
         // (never trusting the model's kcal) so totals stay perfectly synchronized.
