@@ -1,28 +1,55 @@
 {
+  "appContext": {
+    "appName": "PrecisionCal",
+    "category": "AI nutrition tracking and meal analysis",
+    "summary": "PrecisionCal is an AI nutrition app that turns a photo of any meal into a nutritional autopsy: it identifies every ingredient including sauces, oils and garnishes, estimates realistic portion weights, reconciles fat/carb/protein totals, and logs the meal with full transparency about how each weight was estimated. It includes a Today dashboard, meal log, analytics, a community feed called the Sanctuary, a pantry shopping list, and a Pro subscription with a 3-day free trial. Warm, calm wellness aesthetic with ivory backgrounds and terracotta and sage accents.",
+    "domainKeywords": [
+      "meal scan",
+      "nutrition",
+      "macros",
+      "calories",
+      "portion size",
+      "meal log",
+      "Today dashboard",
+      "pantry",
+      "shopping list",
+      "community",
+      "Sanctuary",
+      "premium trial"
+    ],
+    "forbiddenInterpretations": [
+      "workout or gym fitness app",
+      "diet pills or supplements",
+      "food delivery or restaurant app",
+      "recipe cooking app",
+      "medical diagnosis app"
+    ]
+  },
   "theme": {
-    "style": "Warm terracotta and sage wellness world with soft organic gradients, creamy ivory depth, and gentle ambient lighting evoking natural materials and botanical calm. The mood is grounded and premium — earthy pigments, smooth layered silk-like flows, and a tactile grain texture that feels handcrafted yet clinical-clean. Backgrounds should feel like sun-warmed natural surfaces with depth, never sterile or cold.",
-    "headlineFont": "font-family: 'Plus Jakarta Sans', sans-serif; @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&display=swap');",
-    "headlineFontSize": 120,
+    "style": "Warm, calm wellness world of ivory linen, sun-warmed natural wood and soft morning daylight, with terracotta clay and muted sage tones. Gentle diffused window light, soft shadows, fine organic grain and matte ceramic textures create an unhurried, nourishing mood. Backgrounds stay airy and understated so the app UI reads clearly, never loud or clinical.",
+    "headlineFont": "font-family: 'DM Serif Display', serif; @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap');",
+    "headlineFontSize": 136,
     "mockupIds": {
-      "iphone": "silver",
+      "iphone": "cosmic-orange",
       "ipad": "silver"
     },
     "palette": {
-      "primary": "#C4714A",
-      "secondary": "#7A9E7E",
-      "accent": "#E8C47A"
-    }
+      "primary": "#F6F0E6",
+      "secondary": "#C8664A",
+      "accent": "#8FA58A"
+    },
+    "layoutId": "hero-clipped"
   },
   "slides": [
     {
-      "label": "Paywall",
-      "backgroundPrompt": "Abstract digital art featuring flowing organic silk ribbons sweeping diagonally across the frame in warm terracotta, muted sage green, and creamy ivory, with translucent layered veils of color overlapping to create botanical depth and softness. Gentle diffused light blooms from the lower-right corner in warm amber-ivory, casting long smooth gradients across the mid-frame while the upper 30% settles into a deep, calm terracotta-brown that is clean and uncluttered for text overlay. Fine organic grain texture and subtle depth-of-field blur along the outer edges add tactile richness and premium feel. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups.",
-      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/a8c21a0c-167e-4d32-a162-2ba672453450.png"
+      "label": "Scan a Meal",
+      "backgroundPrompt": "Photorealistic soft-focus environment of warm honey oak wood grain surface meeting a creamy ivory linen backdrop, with gentle sweeping shapes of terracotta clay and dusty sage tones blurred in the lower foreground. Soft golden morning daylight streams from the upper left, casting long diffused shadows and a warm glow pooling across the lower half, while the upper 30% stays calm, pale ivory and uncluttered. Shallow depth of field, subtle film grain, matte organic textures, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/b86e6928-1a23-415e-989d-907845a73100.png"
     }
   ],
   "headlines": {
     "en": {
-      "Paywall": "Start Free<br>Go Premium"
+      "Scan a Meal": "Snap Your<br>Plate"
     }
   }
 }
