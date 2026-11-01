@@ -1,0 +1,54 @@
+{
+  "appId": "6766182583",
+  "appPath": "ios",
+  "libraryId": "6766182583",
+  "file": "screenshots/experiments/search-results-banner-final.png",
+  "status": "ready",
+  "exitCode": 0,
+  "receipt": {
+    "imageId": "05400019-34bc-80b7-8004-dae30d7b5d23",
+    "libraryId": "6766182583",
+    "fileName": "search-results-banner-final.png",
+    "fileSize": 8734597,
+    "uploaded": true,
+    "ready": true,
+    "state": "PREPARE_FOR_SUBMISSION",
+    "specId": "d2ffa3b7-6c55-5cdf-8512-229d92791333",
+    "width": 3840,
+    "height": 2560,
+    "diagnostics": [
+      {
+        "event": "assetLibraryImageUpload",
+        "stage": "reserve",
+        "status": "completed",
+        "durationMs": 442,
+        "retryCount": 0,
+        "httpStatus": 201
+      },
+      {
+        "event": "assetLibraryImageUpload",
+        "stage": "upload",
+        "status": "completed",
+        "durationMs": 383,
+        "retryCount": 0,
+        "httpStatus": 200
+      },
+      {
+        "event": "assetLibraryImageUpload",
+        "stage": "commit",
+        "status": "completed",
+        "durationMs": 853,
+        "retryCount": 0,
+        "httpStatus": 200
+      },
+      {
+        "event": "assetLibraryImageUpload",
+        "stage": "processing",
+        "status": "completed",
+        "durationMs": 2115,
+        "retryCount": 0,
+        "httpStatus": 200
+      }
+    ]
+  }
+}
