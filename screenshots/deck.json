@@ -2,19 +2,22 @@
   "appContext": {
     "appName": "PrecisionCal",
     "category": "AI nutrition tracking and meal analysis",
-    "summary": "PrecisionCal is an AI nutrition app that turns a photo of any meal into a nutritional autopsy: it identifies every ingredient including sauces, oils and garnishes, estimates realistic portion weights, reconciles fat/carb/protein totals, and logs the meal with full transparency about how each weight was estimated. It includes a Today dashboard, meal log, analytics, a community feed called the Sanctuary, a pantry shopping list, and a Pro subscription with a 3-day free trial. Warm, calm wellness aesthetic with ivory backgrounds and terracotta and sage accents.",
+    "summary": "PrecisionCal turns a photo of any meal into a nutritional autopsy: it identifies every ingredient including sauces and garnishes, estimates realistic portion weights, and reconciles fat/carb/protein totals with full transparency. It decodes barcode packaged foods with additive-risk ratings, offers the Ask Cal AI guide, a Today dashboard with hydration and PhD breakdowns, trends analytics, the Sanctuary community, and a Pro subscription with a 3-day free trial. Warm ivory, terracotta and sage aesthetic.",
     "domainKeywords": [
       "meal scan",
       "nutrition",
       "macros",
       "calories",
       "portion size",
+      "barcode",
+      "additive risk",
+      "hydration",
       "meal log",
       "Today dashboard",
-      "pantry",
-      "shopping list",
+      "trends",
       "community",
       "Sanctuary",
+      "Ask Cal",
       "premium trial"
     ],
     "forbiddenInterpretations": [
@@ -26,30 +29,72 @@
     ]
   },
   "theme": {
-    "style": "Warm, calm wellness world of ivory linen, sun-warmed natural wood and soft morning daylight, with terracotta clay and muted sage tones. Gentle diffused window light, soft shadows, fine organic grain and matte ceramic textures create an unhurried, nourishing mood. Backgrounds stay airy and understated so the app UI reads clearly, never loud or clinical.",
-    "headlineFont": "font-family: 'DM Serif Display', serif; @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&display=swap');",
-    "headlineFontSize": 136,
+    "style": "A warm editorial wellness world of creamy ivory, sun-baked terracotta and soft sage, like morning light falling across a linen-draped kitchen table. Textures are tactile and natural: matte clay, washed linen, soft plaster and gentle paper grain, lit by low golden daylight with long soft shadows. Most backgrounds stay airy and calm. Two deeper moments, espresso-brown and deep sage, add richness and forensic focus without losing warmth. Organic rounded botanical shapes and soft clay arcs recur as quiet motifs.",
+    "headlineFont": "font-family: 'Fraunces', Georgia, serif; weight 600, optical size 144; @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&display=swap');",
+    "headlineFontSize": 112,
     "mockupIds": {
       "iphone": "cosmic-orange",
       "ipad": "silver"
     },
     "palette": {
-      "primary": "#F6F0E6",
+      "primary": "#F6EFE4",
       "secondary": "#C8664A",
-      "accent": "#8FA58A"
+      "accent": "#8FA68A"
     },
     "layoutId": "hero-clipped"
   },
   "slides": [
     {
-      "label": "Scan a Meal",
-      "backgroundPrompt": "Photorealistic soft-focus environment of warm honey oak wood grain surface meeting a creamy ivory linen backdrop, with gentle sweeping shapes of terracotta clay and dusty sage tones blurred in the lower foreground. Soft golden morning daylight streams from the upper left, casting long diffused shadows and a warm glow pooling across the lower half, while the upper 30% stays calm, pale ivory and uncluttered. Shallow depth of field, subtle film grain, matte organic textures, 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
-      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/b86e6928-1a23-415e-989d-907845a73100.png"
+      "label": "Today Dashboard",
+      "backgroundPrompt": "Soft editorial photograph-style abstract scene of creamy ivory linen and smooth plaster surfaces bathed in warm morning sunlight. Gentle terracotta light pools spill diagonally from the upper left, and a few soft out-of-focus sage green botanical silhouettes sit along the lower edge. The upper third stays a calm, pale ivory glow, with fine paper grain and shallow depth of field. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/eb4c07d5-d462-40fa-969b-f64ed8d60ff5.png"
+    },
+    {
+      "label": "Live Analysis",
+      "backgroundPrompt": "Photorealistic abstract surface of warm honey-toned natural wood grain fading into soft creamy ivory haze, lit by clean daylight from the right. Faint concentric ripples of terracotta and pale clay light radiate gently from the lower center, and a subtle bloom gives the scene a quietly intelligent focus. The top region stays soft, bright and uncluttered, with a gentle vignette and fine natural texture. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/26a11919-fb7b-4209-92fc-2e44ca286063.png"
+    },
+    {
+      "label": "Nutritional Autopsy",
+      "backgroundPrompt": "Rich 3D rendered composition of layered translucent clay-like planes in deep espresso brown, burnt terracotta and warm cinnamon, peeling back in soft overlapping curves. Dramatic warm rim light from below catches each layered edge with a thin glow of soft ivory. The upper 30 percent fades into a calm, near-solid dark espresso tone, with subtle matte grain and deep shadows for depth. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/ced83ca9-0a91-4800-99b4-de7d1b381018.png"
+    },
+    {
+      "label": "Ask Cal Guide",
+      "backgroundPrompt": "Abstract soft-focus scene of rounded pebble-like forms in creamy ivory and blush terracotta floating gently at different depths, their edges glowing with warm diffused light. A gentle sage green haze drifts in from the lower right, while the upper region remains a smooth, calm ivory gradient. The overall mood is intimate and lit like late afternoon, with velvety bokeh and fine grain. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/6e43f0cf-39fc-4632-8ac5-2e4577a932f2.png"
+    },
+    {
+      "label": "Decode Any Label",
+      "backgroundPrompt": "Minimal abstract composition of clean warm ivory plaster with crisp frosted glass panels standing at slight angles. A vivid terracotta light edge glows along the right border, casting thin warm reflections across the panels. Bright, even studio lighting keeps the upper third pristine and calm, with subtle depth-of-field blur toward the bottom corners. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/3ce55189-66ac-409a-b46a-68711c121b0d.png"
+    },
+    {
+      "label": "Sanctuary Community",
+      "backgroundPrompt": "Warm painterly abstract of soft terracotta and creamy ivory fields with overlapping organic sage green leaf shapes gathered in a loose circle near the bottom. Glowing candlelight-amber warmth radiates from the center outward, creating a convivial, embracing atmosphere. The top portion is a smooth, calm terracotta-to-ivory gradient, with gentle canvas texture and soft shadows. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/4d22437d-c522-46cb-8b78-a5ac6f96a39c.png"
+    },
+    {
+      "label": "Trends",
+      "backgroundPrompt": "Cinematic abstract environment in deep forest sage and dark olive green, with gently rising ribbons of warm amber and soft gold light sweeping upward from the lower left to the right. Soft volumetric glow and tiny drifting golden particles add momentum. The upper 30 percent settles into a calm, deep sage darkness, with smooth matte texture and subtle depth-of-field blur. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/f2f7d3db-c2c7-4d85-aa63-652deb13d40c.png"
+    },
+    {
+      "label": "Hydration",
+      "backgroundPrompt": "Airy abstract scene of translucent liquid glass droplets and soft rippling water-like surfaces in pale sage blue, misty seafoam and warm ivory. A gentle hint of terracotta reflects in the curves. Bright diffused daylight from above creates refreshing caustic highlights in the lower half, while the upper region stays a serene, nearly white ivory gradient with fine soft grain. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+      "backgroundUrl": "https://r2-pub.rork.com/app-store-screenshots/e9915017-8895-4999-8143-6228011390f7.png"
     }
   ],
   "headlines": {
     "en": {
-      "Scan a Meal": "Snap Your<br>Plate"
+      "Today Dashboard": "Know Every<br>Bite",
+      "Live Analysis": "Nothing Escapes<br>The Scan",
+      "Nutritional Autopsy": "Every Gram<br>Accounted For",
+      "Ask Cal Guide": "Your Nutritionist<br>On Call",
+      "Decode Any Label": "Truth Behind<br>The Barcode",
+      "Sanctuary Community": "You Are<br>Not Alone",
+      "Trends": "Proof In<br>The Trends",
+      "Hydration": "Wellness<br>In One Tap"
     }
   }
 }

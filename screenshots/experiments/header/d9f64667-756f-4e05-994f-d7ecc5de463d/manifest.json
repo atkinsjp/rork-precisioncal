@@ -1,0 +1,15 @@
+{
+  "status": "draft",
+  "file": "screenshots/experiments/header/d9f64667-756f-4e05-994f-d7ecc5de463d/header.png",
+  "specId": "c8f4e2b1-7a3d-5c9e-8b6f-2d1a0e9c8b7a",
+  "placementType": "PRODUCT_PAGE_HEADER_ASSET",
+  "source": {
+    "file": "ios/PrecisionCalMacroAutopsy/Assets.xcassets/precisioncal_banner.imageset/precisioncal_banner.png",
+    "width": 1536,
+    "height": 1024
+  },
+  "width": 5244,
+  "height": 2950,
+  "hasAlpha": false,
+  "fit": "cover"
+}
